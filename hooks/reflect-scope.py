@@ -59,7 +59,7 @@ dated = []
 for f in files:
     if not f.startswith(content_dirs) or os.path.basename(f) == "index.md":
         continue
-    m = re.search(r"^timestamp:\s*(\d{4}-\d{2}-\d{2})", open(f, encoding="utf-8").read()[:1000], re.M)
+    m = re.search(r"^timestamp:\s*(\d{4}-\d{2}-\d{2})", open(f, encoding="utf-8", errors="replace").read()[:1000], re.M)
     if m:
         dated.append((m.group(1), f))
 for _, f in sorted(dated)[:oldest]:

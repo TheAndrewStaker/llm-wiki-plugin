@@ -29,7 +29,7 @@ mdlink = re.compile(r"\]\(([^)]+)\)")
 wiki = re.compile(r"\[\[([^\]|#]+)")
 for f in files:
     try:
-        txt = open(f, encoding="utf-8").read()
+        txt = open(f, encoding="utf-8", errors="replace").read()
     except OSError:
         continue
     d = os.path.dirname(f)

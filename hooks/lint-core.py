@@ -42,7 +42,7 @@ broken = unresolved = notype = stale = orphan = 0
 
 for f in files:
     try:
-        text = open(f, encoding="utf-8").read()
+        text = open(f, encoding="utf-8", errors="replace").read()
     except OSError:
         continue
     d = os.path.dirname(f)
@@ -54,7 +54,10 @@ for f in files:
         if in_fence:
             continue
         for m in mdlink.finditer(re.sub(r"`[^`]*`", "", line)):
-            t = m.group(1).split()[0].split("#")[0]
+            parts = m.group(1).split()
+            if not parts:  # whitespace-only target like [x](  ) -> not a link
+                continue
+            t = parts[0].split("#")[0]
             if not t or t.startswith(("http://", "https://", "mailto:", "tel:", "ftp:")):
                 continue
             tgt = t.lstrip("/") if t.startswith("/") else os.path.normpath(os.path.join(d, t))

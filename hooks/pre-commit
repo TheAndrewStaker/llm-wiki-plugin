@@ -3,4 +3,7 @@
 # links or unresolved commit-gate tokens; advisory warnings (orphans, no-type, stale) pass.
 # This is the wiki's OWN copy (installed by wiki-setup into <wiki>/hooks/), so a bare clone lints
 # without the plugin present. Bypass once with: git commit --no-verify
-exec "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lint.sh"
+# Lint the repo being committed (its toplevel), NOT a configured WIKI_ROOT: a plain-terminal commit
+# has no plugin env vars set, and the gate must guard THIS repo, not default to ~/wiki.
+KB="$(git rev-parse --show-toplevel)"
+exec "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lint.sh" "$KB"

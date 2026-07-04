@@ -27,7 +27,7 @@ term2page = {}
 for f in files:
     if not f.startswith(entity_dirs) or os.path.basename(f) == "index.md":
         continue
-    head = open(f, encoding="utf-8").read()[:1000]
+    head = open(f, encoding="utf-8", errors="replace").read()[:1000]
     m = re.search(r"^title:\s*(.+)$", head, re.M)
     if m:
         t = m.group(1).strip()
@@ -49,7 +49,7 @@ prose = [f for f in files if f.startswith(prose_dirs)
 
 pairs, by_page = [], collections.Counter()
 for f in prose:
-    raw = open(f, encoding="utf-8").read()
+    raw = open(f, encoding="utf-8", errors="replace").read()
     plain = strip(raw).lower()
     linked = set()
     for tgt in re.findall(r"\]\(([^)#\s]+)", raw):

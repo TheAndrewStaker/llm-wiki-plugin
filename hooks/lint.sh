@@ -13,11 +13,22 @@ if ! command -v python3 >/dev/null 2>&1; then echo "lint: python3 required" >&2;
 
 if [ -t 1 ]; then C=$'\033[36m'; R=$'\033[31m'; G=$'\033[32m'; Z=$'\033[0m'; else C=""; R=""; G=""; Z=""; fi
 
-core=$(python3 "$H/lint-core.py" "$KB" 2>/dev/null)
-graph=$(python3 "$H/graph-check.py" "$KB" 2>/dev/null)
-missed=$(python3 "$H/missed-links.py" "$KB" 2>/dev/null)
+# lint-core is the GATE (broken links + unresolved tokens). If it crashes we cannot trust the
+# counts, so FAIL CLOSED (show the error, exit 2) instead of silently passing. graph/missed are
+# advisory: a crash there warns but never blocks.
+core_err=$(mktemp)
+core=$(python3 "$H/lint-core.py" "$KB" 2>"$core_err")
+core_rc=$?
+graph=$(python3 "$H/graph-check.py" "$KB" 2>/dev/null || true)
+missed=$(python3 "$H/missed-links.py" "$KB" 2>/dev/null || true)
 
 echo "${C}== knowledge-base lint ==${Z}"
+if [ "$core_rc" -ne 0 ]; then
+  echo "${R}FAIL${Z} (lint-core crashed; failing closed rather than passing blind):" >&2
+  cat "$core_err" >&2
+  rm -f "$core_err"; exit 2
+fi
+rm -f "$core_err"
 printf '%s\n' "$core"   | grep -vE '^CORE ' || true
 printf '%s\n' "$graph"  | grep '^  ISLAND' || true
 printf '%s\n' "$missed" | grep '^  MISSED-LINK' || true
@@ -31,7 +42,11 @@ islands=$(printf '%s\n' "$graph"  | sed -n 's/^COMPONENTS=[0-9]* ISLAND_NODES=//
 ml=$(printf '%s\n' "$missed" | sed -n 's/^MISSED_LINKS=//p')
 
 echo "${C}== summary ==${Z}  broken-links:${b:-?}  unresolved:${u:-?}  orphans:${orp:-?}  islands:${islands:-?}  missed-links:${ml:-?}  no-type:${nt:-?}  stale:${st:-?}"
-if [ "${b:-0}" -gt 0 ] || [ "${u:-0}" -gt 0 ]; then
+# If the gate counters didn't parse, the CORE line is malformed -> fail closed, don't pass blind.
+if [ -z "$b" ] || [ -z "$u" ]; then
+  echo "${R}FAIL${Z} (could not read lint-core counts; failing closed)"; exit 2
+fi
+if [ "$b" -gt 0 ] || [ "$u" -gt 0 ]; then
   echo "${R}FAIL${Z} (broken links or unresolved tokens)"; exit 1
 fi
 echo "${G}OK${Z} (hard checks clean; warnings advisory)"; exit 0

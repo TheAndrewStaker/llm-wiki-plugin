@@ -78,7 +78,7 @@ def git_files(kb, pattern="*.md"):
 
 def read(kb, rel):
     try:
-        return open(os.path.join(kb, rel), encoding="utf-8").read()
+        return open(os.path.join(kb, rel), encoding="utf-8", errors="replace").read()
     except OSError:
         return ""
 

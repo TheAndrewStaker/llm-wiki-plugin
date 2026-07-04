@@ -122,6 +122,20 @@ git -C "$W" -c user.name=t -c user.email=t@t commit -qm c2
 stale=$(python3 "$H/stale-source.py" --range HEAD~1..HEAD "$W")
 assert_contains "beta.md flagged RE-CHECK" "RE-CHECK concepts/beta.md" "$stale"
 
+echo "--- gate does NOT fail OPEN on content that used to crash lint-core ---"
+# whitespace-only link target [x](  ) once raised IndexError -> lint.sh printed OK/exit 0 while a
+# real broken link on the same page slipped through. Must now exit nonzero, not 0.
+printf -- '---\ntype: notes\ntitle: crashy\n---\nWhitespace [x](  ) and a real broken [y](nope.md).\n' > "$W/notes/crashy.md"
+git -C "$W" add -A >/dev/null 2>&1
+bash "$H/lint.sh" "$W" >/dev/null 2>&1; rc=$?
+assert "crashy+broken content does not pass (nonzero exit)" "yes" "$([ "$rc" -ne 0 ] && echo yes || echo no)"
+# a non-UTF-8 byte in a tracked page must not crash the gate open either
+printf -- '---\ntype: notes\ntitle: bin\n---\nok \xff\xfe done\n' > "$W/notes/binbyte.md"
+git -C "$W" add -A >/dev/null 2>&1
+bash "$H/lint.sh" "$W" >/dev/null 2>&1; rc2=$?
+assert "non-utf8 page does not crash the gate open" "yes" "$([ "$rc2" -ne 0 ] && echo yes || echo no)"
+git -C "$W" rm -q notes/crashy.md notes/binbyte.md >/dev/null 2>&1
+
 echo "--- reflect-scope caps + runs ---"
 scope=$(python3 "$H/reflect-scope.py" "$W")
 assert_contains "reflect-scope emits a count" "SCOPE_COUNT=" "$scope"

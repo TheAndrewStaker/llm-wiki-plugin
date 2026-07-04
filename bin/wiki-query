@@ -65,7 +65,7 @@ def build_index(kb):
     docs = []
     for f in git_files(kb):
         try:
-            text = open(os.path.join(kb, f), encoding="utf-8").read()
+            text = open(os.path.join(kb, f), encoding="utf-8", errors="replace").read()
         except OSError:
             continue
         fm, body = frontmatter(text)

@@ -87,7 +87,7 @@ if not standing:
 
 recheck, orphaned, uncheckable = [], [], []
 for f in files:
-    text = open(f, encoding="utf-8").read()
+    text = open(f, encoding="utf-8", errors="replace").read()
     sf = wikilib.frontmatter_value(text, "synthesized_from")
     if not sf:
         continue
