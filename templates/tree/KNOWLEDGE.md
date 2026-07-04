@@ -12,9 +12,11 @@ cross-reference graph. **You curate the content; the agent keeps it current and 
 ## Conventions (the standard for every file here)
 - **Format:** markdown body + YAML frontmatter. Frontmatter must include `type:`; add `title`, `timestamp`,
   and links/status as useful. (Only `type:` is required.)
-- **Types in use (closed enum):** content — `entity`, `concept`, `notes` (source-summary pages),
-  `comparison`, `synthesis`, `analysis`, `map`; work overlay — `index`, `state`, `roadmap`, `initiative`,
-  `decision-log`, `open-asks`, `reference`, `archive`, `draft`.
+- **Types (the default set; extensible per-wiki):** content — `entity`, `concept`, `notes` (source-summary
+  pages), `comparison`, `synthesis`, `analysis`, `map`; work overlay — `index`, `state`, `roadmap`,
+  `initiative`, `decision-log`, `open-asks`, `reference`, `archive`, `draft`. The lint only requires that
+  `type:` is present, not that it is one of these — so a domain-specific wiki may define its OWN types
+  (declare them here + add their dirs to `wiki.config.json`); no code change needed.
 - **Layering by horizon:** `STATE.md` = current focus (crisp handoff) · `ROADMAP.md` = long-horizon/parked ·
   `initiatives/<name>.md` = per-initiative deep state · `archive/<period>.md` = done (append-only).
 - **Decisions — routing:** a decided record with rationale → `decisions/<name>.md` (`type: decision-log`);

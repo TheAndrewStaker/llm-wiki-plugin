@@ -4,3 +4,6 @@
 .auto-commit-failed
 .push-failed
 .DS_Store
+
+# Private org-term denylist for scripts/check-no-org.sh (ships nowhere)
+/.org-denylist

@@ -140,6 +140,10 @@ echo "--- reflect-scope caps + runs ---"
 scope=$(python3 "$H/reflect-scope.py" "$W")
 assert_contains "reflect-scope emits a count" "SCOPE_COUNT=" "$scope"
 
+echo "--- org-residue scan (scanner ships; terms live in a gitignored denylist) ---"
+bash "$ROOT/scripts/check-no-org.sh" >/dev/null 2>&1; rc=$?
+assert "org-residue scan passes on tracked repo" "0" "$rc"
+
 echo
 echo "======================================"
 echo "  PASS=$pass  FAIL=$fail"

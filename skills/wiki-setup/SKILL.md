@@ -35,8 +35,8 @@ the user the few questions there (name/voice, source inbox, corroboration source
 ## Step 4 — Install the wiki's own lint scripts
 Copy `${CLAUDE_PLUGIN_ROOT}/hooks/`{lint.sh, lint-core.py, graph-check.py, missed-links.py, stale-source.py,
 reflect-scope.py, wikilib.py, pre-commit} into `<wiki>/hooks/`. This makes the wiki self-contained — a bare
-clone lints without the plugin. (The plugin's SessionStart hook keeps these in sync on version change; it
-only overwrites a copy that matches a known prior version, never a locally-modified one.)
+clone lints without the plugin. These copies are STATIC: after a plugin update, re-run wiki-setup to refresh
+them (there is no automatic re-sync yet — that is a planned enhancement, not current behavior).
 
 ## Step 5 — OFFER git + the gate (confirm)
 Offer, don't assume: `git init` (if not already a repo), `git config core.hooksPath hooks`, and make the
@@ -56,5 +56,6 @@ relative-path (load-bearing for cross-tool clickability). Optional; blocks nothi
 ## Step 8 — Report + the auto-commit ceremony line
 Summarize what was created. State plainly: **"From now on, changes under your wiki auto-commit at the end of
 each turn"** (via the plugin's Stop hook), how to see them (`git -C <wiki> log`), and how to turn it off
-(disable the plugin, or `wiki-setup --remove-gate`). If a content remote exists, note that commits also push.
+(disable the plugin to stop the hooks; `git -C <wiki> config --unset core.hooksPath` to drop the lint gate).
+If a content remote exists, note that commits also push.
 Then point the user at `wiki-init` if they have existing docs to migrate.

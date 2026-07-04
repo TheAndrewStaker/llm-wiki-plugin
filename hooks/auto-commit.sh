@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Stop / SessionEnd hook: auto-commit the wiki whenever it has uncommitted changes, so ending or
 # force-terminating a session never loses agent-authored findings. If a remote named 'origin' and
-# an upstream exist, also push (async, breadcrumb on failure) so a second machine stays in sync.
+# an upstream exist, also push (foreground; a breadcrumb on failure) so a second machine stays in
+# sync. Note: the push runs synchronously, so a slow remote adds latency to the turn's end.
 #
 # Runs the pre-commit lint gate; if lint fails the commit is skipped and the changes stay in the
 # working tree for the next turn to fix. A failure is NOT silent: it writes .auto-commit-failed
@@ -37,13 +38,15 @@ fi
 
 # Push if origin + an upstream are configured. Never blocks the turn; failure is a breadcrumb only.
 if git remote get-url origin >/dev/null 2>&1 && git rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
-  if ! git push -q 2>/tmp/wiki-push-err; then
+  perr=$(mktemp "${TMPDIR:-/tmp}/wiki-push.XXXXXX")
+  if ! git push -q 2>"$perr"; then
     {
       echo "wiki push failed $(date '+%Y-%m-%d %H:%M') -- commit is local-only; pull/resolve then push"
-      cat /tmp/wiki-push-err 2>/dev/null
+      cat "$perr" 2>/dev/null
     } > "$KB/.push-failed"
   else
     rm -f "$KB/.push-failed"
   fi
+  rm -f "$perr"
 fi
 exit 0
