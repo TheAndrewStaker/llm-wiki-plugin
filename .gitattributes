@@ -1,0 +1,10 @@
+# POSIX scripts and text must check out with LF on every platform.
+# Without this, a Windows checkout gets CRLF and `#!/usr/bin/env python3\r`
+# breaks shebang execution (env looks for "python3\r").
+* text=auto eol=lf
+bin/wiki-query text eol=lf
+hooks/pre-commit text eol=lf
+*.sh   text eol=lf
+*.py   text eol=lf
+*.png  binary
+*.jpg  binary
