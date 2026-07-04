@@ -139,14 +139,15 @@ def bm25(docs, query_tokens, k1=1.5, b=0.75):
 
 def health(kb, docs):
     """Deterministic, on-demand readout of the ONE search tripwire that is measurable from content:
-    does the index still fit a single read? Reports scale for context. Does NOT (and cannot) measure
-    the recall tripwire -- whether BM25 MISSES semantically-related pages depends on what you search
-    for and needs ground truth (query-miss logging or a labeled recall eval), not a content metric."""
+    is the SESSION-START READ (the files an agent reads to orient -- STATE + KNOWLEDGE + MEMORY +
+    per-dir index.md) still small enough to read whole each session, or has it outgrown that? Does
+    NOT (and cannot) measure the recall tripwire -- whether BM25 MISSES semantically-related pages
+    needs ground truth (query-miss logging or a labeled recall eval), not a content metric."""
     import json
-    budget = 8000
+    budget = 20000   # words an agent will comfortably read to orient each session (~27k tokens)
     try:
         with open(os.path.join(kb, "wiki.config.json"), encoding="utf-8") as fh:
-            budget = int(json.load(fh).get("index_read_budget_words", budget))
+            budget = int(json.load(fh).get("session_read_budget_words", budget))
     except (OSError, ValueError):
         pass
 
@@ -156,30 +157,31 @@ def health(kb, docs):
         except OSError:
             return 0
 
-    index_paths = [d["path"] for d in docs
-                   if os.path.basename(d["path"]) in ("KNOWLEDGE.md", "MEMORY.md")
-                   or os.path.basename(d["path"]) == "index.md"]
-    idx_words = sum(words(p) for p in index_paths)
+    # the read-first / orientation set: current state + conventions + memory + the navigation catalog
+    read_paths = [d["path"] for d in docs
+                  if os.path.basename(d["path"]) in ("STATE.md", "KNOWLEDGE.md", "MEMORY.md")
+                  or os.path.basename(d["path"]) == "index.md"]
+    read_words = sum(words(p) for p in read_paths)
     corpus_words = sum(words(d["path"]) for d in docs)
-    pct = round(100 * idx_words / budget) if budget else 0
+    pct = round(100 * read_words / budget) if budget else 0
     if pct < 70:
-        verdict = "HEALTHY -- index-first + BM25 sufficient; semantic search (qmd) NOT needed."
+        verdict = "HEALTHY -- the orientation read is cheap; index-first + BM25 sufficient, qmd NOT needed."
     elif pct <= 100:
-        verdict = "APPROACHING -- index is nearing a one-read budget; start watching."
+        verdict = "APPROACHING -- the orientation read is getting heavy; watch it (trim/split first)."
     else:
-        verdict = "OUTGROWN -- index no longer fits one read; adopt semantic search (qmd)."
+        verdict = "OUTGROWN -- too big to read whole each session; trim/split the map, or adopt search (qmd)."
 
     print("wiki search health (deterministic, on-demand)")
-    print(f"  content pages:      {len(docs)}")
-    print(f"  corpus words:       ~{corpus_words}")
-    print(f"  index files:        {len(index_paths)} (~{idx_words} words: KNOWLEDGE.md + */index.md + MEMORY.md)")
-    print(f"  index-read budget:  {budget} words")
-    print(f"  index vs budget:    {pct}%")
+    print(f"  content pages:        {len(docs)}")
+    print(f"  corpus words:         ~{corpus_words}")
+    print(f"  session-start read:   {len(read_paths)} files, ~{read_words} words (STATE + KNOWLEDGE + MEMORY + */index.md)")
+    print(f"  read budget:          {budget} words")
+    print(f"  read vs budget:       {pct}%")
     print(f"verdict: {verdict}")
-    print("NOTE: this measures ONLY the index-size tripwire. Whether BM25 misses semantically-related")
+    print("NOTE: this measures ONLY the read-size tripwire. Whether BM25 misses semantically-related")
     print("pages (the recall tripwire) is NOT deterministic from content -- track query misses or run")
-    print("a labeled recall eval (claude plugin eval) to judge that. A HEALTHY verdict means the index")
-    print("is small, NOT that embeddings would find nothing more.")
+    print("a labeled recall eval (claude plugin eval) to judge that. A HEALTHY verdict means the read is")
+    print("small, NOT that embeddings would find nothing more.")
     return 0
 
 
