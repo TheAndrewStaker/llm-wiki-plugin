@@ -30,6 +30,13 @@ fi
 if [ "$(git -C "$KB" config core.hooksPath 2>/dev/null)" != "hooks" ]; then
   warn="${warn:+$warn | }wiki lint gate not installed -- run: git -C $KB config core.hooksPath hooks"
 fi
+# Contract check: a wiki nobody's CLAUDE.md points at is inert (no session knows to consult it).
+# Warn if the always-loaded ~/.claude/CLAUDE.md doesn't reference the wiki (by root path, KNOWLEDGE.md,
+# or wiki-query). This is the guard behind wiki-setup's *offered* contract stanza.
+CLAUDE_MD="$HOME/.claude/CLAUDE.md"
+if [ -f "$CLAUDE_MD" ] && ! grep -qiE "KNOWLEDGE\.md|wiki-query|$KB" "$CLAUDE_MD" 2>/dev/null; then
+  warn="${warn:+$warn | }wiki exists but ~/.claude/CLAUDE.md doesn't reference it -- run the wiki-setup skill to add the contract stanza, or sessions won't consult the wiki"
+fi
 
 # 2. Current focus from STATE.md (the handoff; absence is normal).
 if [ -f "$KB/STATE.md" ]; then
