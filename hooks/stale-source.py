@@ -95,7 +95,11 @@ for f in files:
     if kind in ("url", "freetext"):
         uncheckable.append((f, target, "a URL" if kind == "url" else "free-text"))
         continue
-    inside_kb = os.path.abspath(target).startswith(os.path.abspath(KB) + os.sep)
+    # realpath both sides so a symlinked root (e.g. macOS /var -> /private/var) doesn't corrupt
+    # the relative path computation below.
+    real_target = os.path.realpath(target)
+    real_kb = os.path.realpath(KB)
+    inside_kb = real_target.startswith(real_kb + os.sep)
     if not os.path.exists(target):
         orphaned.append((f, sf))
         continue
@@ -108,8 +112,8 @@ for f in files:
             recheck.append((f, sf, f"source {sd} > verified {vd}"))
     else:
         if inside_kb and os.path.isfile(target):
-            rel = os.path.relpath(target, KB)
-            if os.path.normpath(rel) in changed:
+            rel = os.path.normpath(os.path.relpath(real_target, real_kb))
+            if rel in changed:
                 recheck.append((f, sf, f"changed in {rng}"))
 
 for f, sf, why in sorted(recheck):
