@@ -1,8 +1,18 @@
 {
   "_comment": "Per-wiki settings read by the hooks. Every key is optional; omitted keys use built-in defaults (see hooks/wikilib.py). This file is versioned WITH your content so it syncs across machines.",
-  "content_dirs": ["entities/", "concepts/", "notes/", "analyses/", "initiatives/", "decisions/", "open-asks/", "reference/"],
+  "content_dirs": [
+    "entities/",
+    "concepts/",
+    "notes/",
+    "analyses/",
+    "initiatives/",
+    "decisions/",
+    "open-asks/",
+    "reference/"
+  ],
   "orphan_exempt_extra": [],
   "missed_link_stop": [],
   "stale_days": 120,
-  "young_wiki_pages": 20
+  "young_wiki_pages": 20,
+  "index_read_budget_words": 8000
 }

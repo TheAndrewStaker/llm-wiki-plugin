@@ -140,6 +140,11 @@ echo "--- reflect-scope caps + runs ---"
 scope=$(python3 "$H/reflect-scope.py" "$W")
 assert_contains "reflect-scope emits a count" "SCOPE_COUNT=" "$scope"
 
+echo "--- search health check (deterministic index-size tripwire) ---"
+h=$($Q --root "$W" --health)
+assert_contains "health emits a verdict" "verdict:" "$h"
+assert_contains "health scopes itself to the size tripwire" "recall tripwire" "$h"
+
 echo "--- malformed-YAML frontmatter is caught + fails the gate ---"
 # a `related:` markdown link opens a flow sequence YAML can't parse (breaks Obsidian + any parser)
 printf -- '---\ntype: notes\ntitle: bad fm\nrelated: [Widget](../entities/widget.md)\n---\nbody\n' > "$W/notes/badfm.md"

@@ -137,6 +137,52 @@ def bm25(docs, query_tokens, k1=1.5, b=0.75):
     return [(s, d) for s, _, d in scores if s > 0]
 
 
+def health(kb, docs):
+    """Deterministic, on-demand readout of the ONE search tripwire that is measurable from content:
+    does the index still fit a single read? Reports scale for context. Does NOT (and cannot) measure
+    the recall tripwire -- whether BM25 MISSES semantically-related pages depends on what you search
+    for and needs ground truth (query-miss logging or a labeled recall eval), not a content metric."""
+    import json
+    budget = 8000
+    try:
+        with open(os.path.join(kb, "wiki.config.json"), encoding="utf-8") as fh:
+            budget = int(json.load(fh).get("index_read_budget_words", budget))
+    except (OSError, ValueError):
+        pass
+
+    def words(rel):
+        try:
+            return len(open(os.path.join(kb, rel), encoding="utf-8", errors="replace").read().split())
+        except OSError:
+            return 0
+
+    index_paths = [d["path"] for d in docs
+                   if os.path.basename(d["path"]) in ("KNOWLEDGE.md", "MEMORY.md")
+                   or os.path.basename(d["path"]) == "index.md"]
+    idx_words = sum(words(p) for p in index_paths)
+    corpus_words = sum(words(d["path"]) for d in docs)
+    pct = round(100 * idx_words / budget) if budget else 0
+    if pct < 70:
+        verdict = "HEALTHY -- index-first + BM25 sufficient; semantic search (qmd) NOT needed."
+    elif pct <= 100:
+        verdict = "APPROACHING -- index is nearing a one-read budget; start watching."
+    else:
+        verdict = "OUTGROWN -- index no longer fits one read; adopt semantic search (qmd)."
+
+    print("wiki search health (deterministic, on-demand)")
+    print(f"  content pages:      {len(docs)}")
+    print(f"  corpus words:       ~{corpus_words}")
+    print(f"  index files:        {len(index_paths)} (~{idx_words} words: KNOWLEDGE.md + */index.md + MEMORY.md)")
+    print(f"  index-read budget:  {budget} words")
+    print(f"  index vs budget:    {pct}%")
+    print(f"verdict: {verdict}")
+    print("NOTE: this measures ONLY the index-size tripwire. Whether BM25 misses semantically-related")
+    print("pages (the recall tripwire) is NOT deterministic from content -- track query misses or run")
+    print("a labeled recall eval (claude plugin eval) to judge that. A HEALTHY verdict means the index")
+    print("is small, NOT that embeddings would find nothing more.")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(add_help=True)
     ap.add_argument("query", nargs="*")
@@ -146,6 +192,7 @@ def main():
     ap.add_argument("--neighbors", action="store_true")
     ap.add_argument("--limit", type=int, default=10)
     ap.add_argument("--catalog", action="store_true")
+    ap.add_argument("--health", action="store_true")
     a = ap.parse_args()
 
     kb = resolve_root(a.root)
@@ -153,6 +200,9 @@ def main():
         print(f"wiki-query: wiki root not found: {kb}", file=sys.stderr)
         return 2
     docs = build_index(kb)
+
+    if a.health:
+        return health(kb, docs)
     cat = write_catalog(kb, docs)
 
     if a.catalog:
