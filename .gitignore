@@ -1,0 +1,6 @@
+# The test fixture is built (with its own git history) by the test harness, not committed.
+/tests/fixtures/*/
+# breadcrumbs a wiki writes, should one ever be created inside the repo
+.auto-commit-failed
+.push-failed
+.DS_Store

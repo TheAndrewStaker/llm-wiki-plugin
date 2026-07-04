@@ -1,0 +1,16 @@
+{
+  "name": "llm-wiki-plugin",
+  "owner": {
+    "name": "Andrew Staker"
+  },
+  "description": "A compounding file-based knowledge wiki for AI agents (Karpathy LLM-Wiki + Google OKF).",
+  "plugins": [
+    {
+      "name": "llm-wiki-plugin",
+      "source": "./",
+      "description": "Ingest, query, reflect, and lint a markdown knowledge wiki. Ships lifecycle hooks, deterministic lint, and a lexical search CLI.",
+      "version": "0.1.0",
+      "license": "Apache-2.0"
+    }
+  ]
+}

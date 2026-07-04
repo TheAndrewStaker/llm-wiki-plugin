@@ -1,0 +1,23 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "llm-wiki-plugin",
+  "version": "0.1.0",
+  "description": "A compounding, file-based knowledge wiki for AI agents: markdown + YAML frontmatter, deterministic lint, agentic search, and ingest/query/reflect skills. Follows Karpathy's LLM-Wiki pattern and Google's Open Knowledge Format.",
+  "author": {
+    "name": "Andrew Staker"
+  },
+  "license": "Apache-2.0",
+  "keywords": ["knowledge-base", "wiki", "memory", "okf", "llm-wiki", "notes"],
+  "skills": ["./skills"],
+  "commands": ["./commands"],
+  "hooks": "./hooks/hooks.json",
+  "userConfig": {
+    "WIKI_ROOT": {
+      "type": "string",
+      "title": "Wiki root",
+      "description": "Directory where your knowledge wiki lives. Defaults to ~/wiki. Use ~/.claude only if you deliberately want the wiki to share your Claude Code config dir (power-user layout).",
+      "default": "~/wiki",
+      "required": false
+    }
+  }
+}
