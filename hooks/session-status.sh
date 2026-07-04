@@ -50,10 +50,24 @@ if [ -f "$KB/STATE.md" ]; then
   fi
 fi
 
-# 3. Young-wiki hint: below the threshold, bias toward capture over query.
-pages=$(git -C "$KB" ls-files 'entities/*.md' 'concepts/*.md' 'notes/*.md' 'analyses/*.md' 'initiatives/*.md' 'decisions/*.md' 'reference/*.md' 2>/dev/null | wc -l | tr -d ' ')
-if [ "${pages:-0}" -lt 20 ]; then
-  ctx+="(Wiki is young (${pages:-0} content pages): capture findings as pages; don't expect query to retrieve much yet.)"$'\n\n'
+# 3. Young-wiki hint: below the configured threshold, bias toward capture over query.
+#    content_dirs + young_wiki_pages come from wiki.config.json (via wikilib defaults), not hardcoded.
+if command -v python3 >/dev/null 2>&1; then
+  H="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  read -r threshold globs < <(python3 - "$H" "$KB" <<'PY'
+import sys, os
+sys.path.insert(0, sys.argv[1])
+import wikilib
+cfg = wikilib.load_config(sys.argv[2])
+print(cfg["young_wiki_pages"], " ".join(d.rstrip("/") + "/*.md" for d in cfg["content_dirs"]))
+PY
+)
+  if [ -n "${globs:-}" ]; then
+    pages=$(git -C "$KB" ls-files ${globs} 2>/dev/null | wc -l | tr -d ' ')
+    if [ -n "${threshold:-}" ] && [ "${pages:-0}" -lt "$threshold" ]; then
+      ctx+="(Wiki is young (${pages:-0} content pages): capture findings as pages; don't expect query to retrieve much yet.)"$'\n\n'
+    fi
+  fi
 fi
 
 # 4. Org/personal drop-ins (e.g. an assignment injector). Each prints raw context to stdout.
