@@ -8,9 +8,6 @@
   },
   "license": "Apache-2.0",
   "keywords": ["knowledge-base", "wiki", "memory", "okf", "llm-wiki", "notes"],
-  "skills": ["./skills"],
-  "commands": ["./commands"],
-  "hooks": "./hooks/hooks.json",
   "userConfig": {
     "WIKI_ROOT": {
       "type": "string",
