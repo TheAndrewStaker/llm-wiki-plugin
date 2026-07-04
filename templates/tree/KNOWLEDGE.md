@@ -93,6 +93,15 @@ weak links) is the `reflect` skill — it proposes; you dispose.
 > Fill this in for your setup; the skills consult it.
 - **Owner / voice:** <your name and how you want the agent to write for you>
 - **Wiki root:** this directory (set the plugin's `WIKI_ROOT` to match).
+- **Knowledge routing (topology):** where knowledge lives, and what belongs HERE. Pick one, record it:
+  - `single-wiki` — everything lands in this wiki (solo use; no shared repos or teams).
+  - `hub-and-spokes` (the default if you work in shared code/docs repos) — this wiki is your private
+    hub; a fact whose audience is a team lives in that team's own home (the repo's committed, reviewed
+    docs; a handbook) as ordinary files. The hub keeps YOUR view plus a pointer (an entity/initiative
+    page with the remote URL + local path) — never a copy of what the team home already records.
+  - `shared-wiki` — this wiki itself is shared by several people (bring your own review norms).
+  Two rules make any choice work: **one home per fact, chosen by audience**, and **pointers, not
+  copies**. Agents: if this entry is unfilled, ask once and record the answer here — don't guess.
 - **Source inbox:** where dropped sources land before ingest (e.g. `~/Downloads`, `sources/`).
 - **Corroboration sources:** authoritative places to cross-check claims (org docs, a roster, a handbook).
 - **Review gates:** which changes need your sign-off vs. proceed-and-report.

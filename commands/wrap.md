@@ -9,6 +9,9 @@ the wiki root from `$CLAUDE_PLUGIN_OPTION_WIKI_ROOT` / `$WIKI_ROOT` / `~/wiki`.
 1. Review what this session did. Separate **durable** findings (decisions, verified facts, syntheses, new
    entities/concepts, refined open-asks) from throwaway chatter. Skip the chatter.
 2. File the durable items per the wiki's `KNOWLEDGE.md` (Operations + decision routing):
+   - **Route by the wiki's declared knowledge topology first** (KNOWLEDGE.md "Local configuration"): a
+     finding whose audience is a team goes to that team's home (the repo's committed docs), and the wiki
+     gets your view + a pointer page. If no topology is recorded, ask once and record it.
    - analysis / good Q&A → a page in the right type-dir (`analyses/` / `concepts/` / `entities/` / `notes/`),
      with `synthesized_from:` when there is a source; cross-link with relative md links.
    - decisions → `decisions/<name>.md`; open asks you owe someone → `open-asks/<who>.md`.

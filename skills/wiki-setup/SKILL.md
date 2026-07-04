@@ -30,7 +30,11 @@ default** — this skill must be safe to run against a directory that already ho
 Copy `${CLAUDE_PLUGIN_ROOT}/templates/tree/.` into the wiki root, **skipping any file that already exists**.
 Rename the template `gitignore` → `.gitignore`. Stamp `timestamp:` in `KNOWLEDGE.md`/`STATE.md`/`ROADMAP.md`
 to today (so a fresh wiki isn't born stale). Fill the KNOWLEDGE.md "Local configuration" section by asking
-the user the few questions there (name/voice, source inbox, corroboration sources, review gates).
+the user the few questions there (name/voice, **knowledge routing/topology**, source inbox, corroboration
+sources, review gates). Topology matters most: default to `hub-and-spokes` for anyone working in shared
+code repos (team-audience knowledge goes to the team's own repos as reviewed docs; this wiki keeps the
+private view + pointers), `single-wiki` for solo use. Record the answer — it is what stops future
+sessions from re-deriving where facts belong.
 
 ## Step 4 — Install the wiki's own lint scripts
 Copy `${CLAUDE_PLUGIN_ROOT}/hooks/`{lint.sh, lint-core.py, graph-check.py, missed-links.py, stale-source.py,

@@ -42,6 +42,17 @@ Three seams, each matched to its consumer:
 - **Per-user, content-coupled:** `wiki.config.json` at the wiki root (content dirs, orphan exemptions, missed-link stoplist, thresholds) — versioned with the content.
 - **Per-org:** drop-in extension dirs (`status.d/*.sh` for session-start context injection); nothing host-specific in core.
 
+## One wiki or many? (topology)
+
+Exactly **one personal hub per human** gets the machinery — session injection, search, lint gate,
+auto-commit. Knowledge whose audience is a team belongs in that team's own home (a repo's committed,
+PR-reviewed docs) as ordinary files; the hub links to it with **pointer pages** rather than copies. Two
+rules: one home per fact, chosen by audience; pointers, not copies. Each wiki records its chosen topology
+in `KNOWLEDGE.md` "Local configuration" (`wiki-setup` asks at scaffold time); if it is unrecorded, agents
+should ask once and record the answer, not guess. A shared team wiki is possible — it is just another wiki
+with its own review norms — but multi-root sessions and plugin tooling over repo docs deliberately do not
+exist: repo docs are already in front of any agent working in that repo.
+
 ## Status
 
 The core loop (setup → migrate → ingest/query/reflect/wrap, lint gate, auto-commit, session injection) is implemented and dogfooded daily against the maintainer's live wiki. Remaining work before publishing is packaging, not functionality — see "Publish-gate TODOs" in `CLAUDE.md`.
