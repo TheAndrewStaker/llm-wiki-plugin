@@ -25,8 +25,8 @@ found while using the wiki get made HERE**, then flow back into daily use immedi
 
 When you find a bug, missing capability, or rough edge while using the wiki:
 1. Fix or add it in this repo (generic — see the rule above).
-2. Run `bash tests/run.sh` — it must stay green (9 golden assertions across the lint/query/stale stack).
-   Add a new assertion when you add behavior.
+2. Run `bash tests/run.sh` — it must stay green (golden assertions across the lint/query/stale/scaffold
+   stack; the run prints the count). Add a new assertion when you add behavior.
 3. `claude plugin validate .` must pass.
 4. Commit (author identity below). Note anything notable in the maintainer's wiki initiative
    `initiatives/wiki-plugin.md` so the intent survives across sessions.

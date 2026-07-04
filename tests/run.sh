@@ -160,6 +160,37 @@ core=$(python3 "$H/lint-core.py" "$W")
 assert "valid flow sequence not flagged" "0" "$(printf '%s\n' "$core" | grep -c 'BADYAML notes/goodfm.md')"
 git -C "$W" rm -q notes/badfm.md notes/goodfm.md >/dev/null 2>&1
 
+echo "--- catalog + neighbors ---"
+cout=$($Q --root "$W" --catalog)
+assert_contains "catalog reports page count" "catalog.tsv" "$cout"
+assert_contains "catalog lists beta.md" "concepts/beta.md" "$(cat "$W/catalog.tsv")"
+nout=$($Q --root "$W" --neighbors beta concept)
+assert_contains "neighbors surfaces a 1-hop link" "entities/alpha.md" "$nout"
+
+echo "--- template scaffold lints clean + pre-commit gate blocks ---"
+# wiki-setup's deterministic core: templates/tree + the wiki's own hook copies must yield a
+# lint-green wiki whose pre-commit rejects a broken link and passes a clean commit.
+T="$(mktemp -d)/fresh"
+mkdir -p "$T"
+cp -R "$ROOT/templates/tree/." "$T/"
+mv "$T/gitignore" "$T/.gitignore"
+mkdir -p "$T/hooks"
+for f in lint.sh lint-core.py graph-check.py missed-links.py stale-source.py reflect-scope.py wikilib.py pre-commit; do
+  cp "$ROOT/hooks/$f" "$T/hooks/"
+done
+git -C "$T" init -q
+git -C "$T" config core.hooksPath hooks
+git -C "$T" add -A
+git -C "$T" -c user.name=t -c user.email=t@t commit -qm scaffold >/dev/null 2>&1; rc=$?
+assert "fresh scaffold commits through the gate" "0" "$rc"
+bash "$T/hooks/lint.sh" "$T" >/dev/null 2>&1; rc=$?
+assert "fresh scaffold lints clean" "0" "$rc"
+printf -- '---\ntype: notes\ntitle: bad\n---\n[broken](../nope/missing.md)\n' > "$T/notes/bad.md"
+git -C "$T" add -A
+git -C "$T" -c user.name=t -c user.email=t@t commit -qm bad >/dev/null 2>&1; rc=$?
+assert "pre-commit blocks a broken-link commit" "yes" "$([ "$rc" -ne 0 ] && echo yes || echo no)"
+rm -rf "$(dirname "$T")"
+
 echo "--- org-residue scan (scanner ships; terms live in a gitignored denylist) ---"
 bash "$ROOT/scripts/check-no-org.sh" >/dev/null 2>&1; rc=$?
 assert "org-residue scan passes on tracked repo" "0" "$rc"
