@@ -42,7 +42,7 @@ never move or edit them. `log()` anything skipped (no silent caps).
 - Dedupe against existing page slugs before linking (a batch may have proposed a page that already exists →
   merge or skip, don't duplicate).
 - Build the indexes and cross-links across all new pages.
-- Run `bash "$WIKI_ROOT/hooks/lint.sh"` and `wiki-query --catalog`; the branch must be lint-green.
+- Run `bash "$WIKI_ROOT/hooks/lint.sh"` and `python3 "$WIKI_ROOT/bin/wiki-query" --catalog`; the branch must be lint-green.
 
 ## Phase 4 — Review = git, apply = merge
 Present the branch as the proposal: `git -C <wiki> diff --stat main..<branch>` plus spot-checks of a few

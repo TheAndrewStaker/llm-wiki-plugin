@@ -60,7 +60,7 @@ takeaways (heavy source = interactive; trivial = propose-then-confirm). 3. Write
 the right type-dir. 4. Update the relevant index. 5. Update linked entity/concept pages. 6. Extract any
 decisions → the decision routing above. 7. Cross-link with relative md links. The git commit is the log.
 
-**Query** (ask the wiki): consult the **index first**; then `wiki-query <terms>` (deterministic lexical
+**Query** (ask the wiki): consult the **index first**; then `python3 "$WIKI_ROOT/bin/wiki-query" <terms>` (deterministic lexical
 search, `--type/--tag/--neighbors`) to locate pages; link-walk; **answer with citations** (relative-md
 links to the pages used); **file good answers back as pages** so explorations compound.
 
@@ -85,7 +85,7 @@ weak links) is the `reflect` skill — it proposes; you dispose.
 - [analyses/](analyses/index.md) — comparisons / syntheses / filed-back query answers.
 - [initiatives/](initiatives/index.md), [decisions/](decisions/index.md), [open-asks/](open-asks/index.md) — the work overlay.
 - [archive/](archive/index.md) — completed work, dated, append-only.
-- `sources/` — raw, immutable originals; skills read, never edit.
+- [sources/](sources/README.md) — raw, immutable originals; skills read, never edit.
 - [STATE.md](STATE.md) / [ROADMAP.md](ROADMAP.md) — current focus / long-horizon.
 - `CLAUDE.md` — your working preferences (loaded every session).
 

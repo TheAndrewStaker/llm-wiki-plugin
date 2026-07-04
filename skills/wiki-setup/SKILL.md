@@ -36,11 +36,14 @@ code repos (team-audience knowledge goes to the team's own repos as reviewed doc
 private view + pointers), `single-wiki` for solo use. Record the answer — it is what stops future
 sessions from re-deriving where facts belong.
 
-## Step 4 — Install the wiki's own lint scripts
+## Step 4 — Install the wiki's own lint + search scripts
 Copy `${CLAUDE_PLUGIN_ROOT}/hooks/`{lint.sh, lint-core.py, graph-check.py, missed-links.py, stale-source.py,
-reflect-scope.py, wikilib.py, pre-commit} into `<wiki>/hooks/`. This makes the wiki self-contained — a bare
-clone lints without the plugin. These copies are STATIC: after a plugin update, re-run wiki-setup to refresh
-them (there is no automatic re-sync yet — that is a planned enhancement, not current behavior).
+reflect-scope.py, wikilib.py, pre-commit} into `<wiki>/hooks/`, and `${CLAUDE_PLUGIN_ROOT}/bin/wiki-query`
+into `<wiki>/bin/` (`mkdir -p <wiki>/bin` first). This makes the wiki self-contained: a bare clone lints AND
+searches without the plugin. Always invoke search as `python3 "<wiki>/bin/wiki-query" <terms>`, never bare
+`wiki-query`: the script's `#!/usr/bin/env python3` shebang is not exec-able on every host (some Python
+launchers cannot be run through `env`), so the plugin always calls the interpreter explicitly. These copies
+are STATIC: after a plugin update, re-run wiki-setup to refresh them (no automatic re-sync yet).
 
 ## Step 5 — OFFER git + the gate (confirm)
 Offer, don't assume: `git init` (if not already a repo), `git config core.hooksPath hooks`, and make the

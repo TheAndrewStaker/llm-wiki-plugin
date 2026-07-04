@@ -6,7 +6,9 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 H="$ROOT/hooks"
-Q="$ROOT/bin/wiki-query"
+# Invoke the interpreter explicitly: the `#!/usr/bin/env python3` shebang is not exec-able on
+# every host (some Python launchers cannot be run through MSYS `env`), so never rely on it.
+Q="python3 $ROOT/bin/wiki-query"
 W="$(mktemp -d)/wiki"
 mkdir -p "$W"/{entities,concepts,notes,analyses,sources}
 export WIKI_ROOT="$W"
