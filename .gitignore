@@ -7,3 +7,6 @@
 
 # Private org-term denylist for scripts/check-no-org.sh (ships nowhere)
 /.org-denylist
+
+__pycache__/
+*.pyc
