@@ -140,6 +140,21 @@ echo "--- reflect-scope caps + runs ---"
 scope=$(python3 "$H/reflect-scope.py" "$W")
 assert_contains "reflect-scope emits a count" "SCOPE_COUNT=" "$scope"
 
+echo "--- malformed-YAML frontmatter is caught + fails the gate ---"
+# a `related:` markdown link opens a flow sequence YAML can't parse (breaks Obsidian + any parser)
+printf -- '---\ntype: notes\ntitle: bad fm\nrelated: [Widget](../entities/widget.md)\n---\nbody\n' > "$W/notes/badfm.md"
+git -C "$W" add -A >/dev/null 2>&1
+core=$(python3 "$H/lint-core.py" "$W")
+assert_contains "malformed frontmatter flagged" "BADYAML notes/badfm.md" "$core"
+bash "$H/lint.sh" "$W" >/dev/null 2>&1; rc=$?
+assert "gate fails on malformed frontmatter" "1" "$rc"
+# a VALID flow sequence must NOT be flagged
+printf -- '---\ntype: notes\ntitle: good fm\ntags: [a, b, c]\n---\nbody\n' > "$W/notes/goodfm.md"
+git -C "$W" add -A >/dev/null 2>&1
+core=$(python3 "$H/lint-core.py" "$W")
+assert "valid flow sequence not flagged" "0" "$(printf '%s\n' "$core" | grep -c 'BADYAML notes/goodfm.md')"
+git -C "$W" rm -q notes/badfm.md notes/goodfm.md >/dev/null 2>&1
+
 echo "--- org-residue scan (scanner ships; terms live in a gitignored denylist) ---"
 bash "$ROOT/scripts/check-no-org.sh" >/dev/null 2>&1; rc=$?
 assert "org-residue scan passes on tracked repo" "0" "$rc"

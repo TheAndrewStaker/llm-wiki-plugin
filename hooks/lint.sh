@@ -35,18 +35,19 @@ printf '%s\n' "$missed" | grep '^  MISSED-LINK' || true
 
 b=$(printf '%s\n'  "$core"   | sed -n 's/^CORE broken=\([0-9]*\).*/\1/p')
 u=$(printf '%s\n'  "$core"   | sed -n 's/^CORE [^ ]* unresolved=\([0-9]*\).*/\1/p')
+by=$(printf '%s\n' "$core"   | sed -n 's/.* badyaml=\([0-9]*\).*/\1/p')
 nt=$(printf '%s\n' "$core"   | sed -n 's/.* notype=\([0-9]*\).*/\1/p')
 st=$(printf '%s\n' "$core"   | sed -n 's/.* stale=\([0-9]*\).*/\1/p')
 orp=$(printf '%s\n' "$core"  | sed -n 's/.* orphan=\([0-9]*\)$/\1/p')
 islands=$(printf '%s\n' "$graph"  | sed -n 's/^COMPONENTS=[0-9]* ISLAND_NODES=//p')
 ml=$(printf '%s\n' "$missed" | sed -n 's/^MISSED_LINKS=//p')
 
-echo "${C}== summary ==${Z}  broken-links:${b:-?}  unresolved:${u:-?}  orphans:${orp:-?}  islands:${islands:-?}  missed-links:${ml:-?}  no-type:${nt:-?}  stale:${st:-?}"
+echo "${C}== summary ==${Z}  broken-links:${b:-?}  unresolved:${u:-?}  bad-yaml:${by:-?}  orphans:${orp:-?}  islands:${islands:-?}  missed-links:${ml:-?}  no-type:${nt:-?}  stale:${st:-?}"
 # If the gate counters didn't parse, the CORE line is malformed -> fail closed, don't pass blind.
-if [ -z "$b" ] || [ -z "$u" ]; then
+if [ -z "$b" ] || [ -z "$u" ] || [ -z "$by" ]; then
   echo "${R}FAIL${Z} (could not read lint-core counts; failing closed)"; exit 2
 fi
-if [ "$b" -gt 0 ] || [ "$u" -gt 0 ]; then
-  echo "${R}FAIL${Z} (broken links or unresolved tokens)"; exit 1
+if [ "$b" -gt 0 ] || [ "$u" -gt 0 ] || [ "$by" -gt 0 ]; then
+  echo "${R}FAIL${Z} (broken links, unresolved tokens, or malformed YAML frontmatter)"; exit 1
 fi
 echo "${G}OK${Z} (hard checks clean; warnings advisory)"; exit 0

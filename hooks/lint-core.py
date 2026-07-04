@@ -37,8 +37,41 @@ def orphan_exempt(f, b):
 
 mdlink = re.compile(r"\]\(([^)]+)\)")
 fence = re.compile(r"^\s*(```|~~~)")
+keyline = re.compile(r"^([A-Za-z_][\w-]*):[ \t]*(.*)$")
 issues, linked = [], set()
-broken = unresolved = notype = stale = orphan = 0
+broken = unresolved = notype = stale = orphan = badyaml = 0
+
+
+def bad_yaml_keys(fm_text):
+    """Flag frontmatter keys whose value OPENS a flow collection ([..] / {..}) but is malformed
+    — the common breakage: a markdown link as a value (`related: [x](../x.md)`) or unbalanced
+    brackets, both of which make the whole frontmatter invalid YAML (breaks Obsidian + any parser).
+    Deterministic, stdlib-only, conservative: a valid flow sequence like `tags: [a, b]` passes;
+    the fix is to quote the value or use a proper YAML list."""
+    lines = fm_text.split("\n")
+    bad, i = [], 0
+    while i < len(lines):
+        m = keyline.match(lines[i])
+        if not m:
+            i += 1
+            continue
+        key, val = m.group(1), m.group(2).strip()
+        if val[:1] in ("[", "{"):
+            openc = val[0]
+            closec = "]" if openc == "[" else "}"
+            acc, j = val, i
+            # join continuation lines (a multi-line flow collection) until brackets balance
+            while acc.count(openc) > acc.count(closec) and j + 1 < len(lines) \
+                    and not keyline.match(lines[j + 1]) and lines[j + 1].strip():
+                j += 1
+                acc += " " + lines[j].strip()
+            acc = re.sub(r"\s+#.*$", "", acc).strip()   # drop a trailing comment
+            if acc.count(openc) != acc.count(closec) or not acc.endswith(closec):
+                bad.append(key)
+            i = j + 1
+            continue
+        i += 1
+    return bad
 
 for f in files:
     try:
@@ -70,9 +103,14 @@ for f in files:
         issues.append(f"  UNRESOLVED {f}")
         unresolved += 1
     b = os.path.basename(f)
+    fmblock = re.match(r"^---\n(.*?)\n---", text, re.S)
+    # malformed-YAML frontmatter (checked on every file that has a frontmatter block)
+    if fmblock:
+        for k in bad_yaml_keys(fmblock.group(1)):
+            issues.append(f"  BADYAML {f} (key '{k}': flow value not valid YAML -- quote it or use a list)")
+            badyaml += 1
     if not type_exempt(f, b):
-        fm = re.match(r"^---\n(.*?)\n---", text, re.S)
-        if not (fm and re.search(r"^type:\s*\S", fm.group(1), re.M)):
+        if not (fmblock and re.search(r"^type:\s*\S", fmblock.group(1), re.M)):
             issues.append(f"  NO type: {f}")
             notype += 1
     m = re.search(r"^timestamp:\s*(\d{4}-\d{2}-\d{2})", text[:1000], re.M)
@@ -94,4 +132,4 @@ for f in files:
 
 for line in issues:
     print(line)
-print(f"CORE broken={broken} unresolved={unresolved} notype={notype} stale={stale} orphan={orphan}")
+print(f"CORE broken={broken} unresolved={unresolved} badyaml={badyaml} notype={notype} stale={stale} orphan={orphan}")
