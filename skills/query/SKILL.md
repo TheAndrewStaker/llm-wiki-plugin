@@ -16,12 +16,13 @@ and to *grow* it, so the next query is cheaper. Resolve the wiki root from
 ## Steps
 1. **Index first.** Read the wiki's `KNOWLEDGE.md` and the relevant `*/index.md` — cheap, and it orients the
    search before any retrieval.
-2. **Locate with `wiki-query`** (deterministic lexical search; on PATH when the plugin is active):
+2. **Locate with `wiki-query`** (deterministic lexical search; invoke via `python3` for portability,
+   the same way the hooks are called):
    ```bash
-   wiki-query <terms>                 # ranked pages
-   wiki-query --type concept <terms>  # filter by frontmatter type
-   wiki-query --tag <tag> <terms>
-   wiki-query --neighbors <terms>     # also surface 1-hop link neighbors of the top hits
+   python3 "$WIKI_ROOT/bin/wiki-query" <terms>                 # ranked pages
+   python3 "$WIKI_ROOT/bin/wiki-query" --type concept <terms>  # filter by frontmatter type
+   python3 "$WIKI_ROOT/bin/wiki-query" --tag <tag> <terms>
+   python3 "$WIKI_ROOT/bin/wiki-query" --neighbors <terms>     # 1-hop link neighbors of the top hits
    ```
 3. **Link-walk** from the top hits (relative-md links) to gather the full picture; read the pages, not just
    the catalog rows.

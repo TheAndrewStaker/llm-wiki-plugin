@@ -39,12 +39,15 @@ Write the selected value to both the prose declaration and `wiki.config.json`'s 
 Set `auto_commit: false` for a `shared-wiki` unless its maintainers explicitly accept direct automated
 commits. Keep `auto_push: false` unless the user explicitly opts into network writes.
 
-## Step 4 — Install the wiki's own lint scripts
+## Step 4 — Install the wiki's own lint + search scripts
 Copy `${CLAUDE_PLUGIN_ROOT}/hooks/`{lint.sh, lint-core.py, graph-check.py, missed-links.py, stale-source.py,
 reflect-scope.py, rewrite-links.py, wanted-pages.py, inbox-check.py, timestamp-drift.py, wikilib.py,
-stage-source.py, pre-commit} into `<wiki>/hooks/`. This makes the wiki self-contained — a bare
-clone lints without the plugin. These copies are STATIC: after a plugin update, re-run wiki-setup to refresh
-them (there is no automatic re-sync yet — that is a planned enhancement, not current behavior).
+stage-source.py, pre-commit} into `<wiki>/hooks/`, and `${CLAUDE_PLUGIN_ROOT}/bin/`{wiki-query, wiki-eval,
+wiki-okf} into `<wiki>/bin/` (`mkdir -p <wiki>/bin` first). This makes the wiki self-contained: a bare clone
+lints AND searches without the plugin. Always invoke search as `python3 "<wiki>/bin/wiki-query" <terms>`,
+never bare `wiki-query`: the script's `#!/usr/bin/env python3` shebang is not exec-able on every host (some
+Python launchers cannot be run through `env`), so the plugin always calls the interpreter explicitly. These
+copies are STATIC: after a plugin update, re-run wiki-setup to refresh them (no automatic re-sync yet).
 
 ## Step 5 — OFFER git + the gate (confirm)
 Offer, don't assume: `git init` (if not already a repo), `git config core.hooksPath hooks`, and make the
