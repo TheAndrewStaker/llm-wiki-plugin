@@ -1,0 +1,6 @@
+---
+type: index
+title: initiatives — index
+---
+
+Index of `initiatives/`. One line per page as they're created: `- [Title](slug.md) — one-line hook`.

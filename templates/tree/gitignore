@@ -1,0 +1,23 @@
+# Generated + machine-local files — not part of the curated wiki.
+/catalog.tsv
+/.auto-commit-failed
+/.push-failed
+.DS_Store
+
+# Obsidian: keep the link-format config so it survives a fresh clone; ignore workspace caches.
+.obsidian/workspace*.json
+.obsidian/cache
+.obsidian/plugins/*/data.json
+
+# --- POWER-USER LAYOUT ONLY ---
+# If your WIKI_ROOT is ~/.claude (shared with Claude Code's config dir), DELETE the lines above and
+# use an ALLOWLIST instead, so machine/session/cache dirs never leak into the wiki repo:
+#   /*
+#   !/.gitignore
+#   !/CLAUDE.md
+#   !/KNOWLEDGE.md
+#   !/STATE.md
+#   !/ROADMAP.md
+#   !/wiki.config.json
+#   !/entities/  (and the other content dirs)
+#   !/hooks/  !/skills/  !/commands/
