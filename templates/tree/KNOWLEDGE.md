@@ -65,7 +65,8 @@ search, `--type/--tag/--neighbors`) to locate pages; link-walk; **answer with ci
 links to the pages used); **file good answers back as pages** so explorations compound.
 
 **Lint** (`hooks/lint.sh`, deterministic, pre-commit-gated): broken links, orphans, missing `type:`,
-commit-gate tokens, stale dates. The judgment pass (contradictions, stale-superseded claims, missing pages,
+commit-gate tokens, stale dates, title/alias collisions (two pages claiming one name), and pages missing
+from their dir's `index.md`. The judgment pass (contradictions, stale-superseded claims, missing pages,
 weak links) is the `reflect` skill — it proposes; you dispose.
 
 ## Staleness policy (no calendar sweeps)

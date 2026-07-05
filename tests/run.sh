@@ -134,7 +134,7 @@ printf -- '---\ntype: notes\ntitle: bin\n---\nok \xff\xfe done\n' > "$W/notes/bi
 git -C "$W" add -A >/dev/null 2>&1
 bash "$H/lint.sh" "$W" >/dev/null 2>&1; rc2=$?
 assert "non-utf8 page does not crash the gate open" "yes" "$([ "$rc2" -ne 0 ] && echo yes || echo no)"
-git -C "$W" rm -q notes/crashy.md notes/binbyte.md >/dev/null 2>&1
+git -C "$W" rm -qf notes/crashy.md notes/binbyte.md >/dev/null 2>&1
 
 echo "--- reflect-scope caps + runs ---"
 scope=$(python3 "$H/reflect-scope.py" "$W")
@@ -158,7 +158,7 @@ printf -- '---\ntype: notes\ntitle: good fm\ntags: [a, b, c]\n---\nbody\n' > "$W
 git -C "$W" add -A >/dev/null 2>&1
 core=$(python3 "$H/lint-core.py" "$W")
 assert "valid flow sequence not flagged" "0" "$(printf '%s\n' "$core" | grep -c 'BADYAML notes/goodfm.md')"
-git -C "$W" rm -q notes/badfm.md notes/goodfm.md >/dev/null 2>&1
+git -C "$W" rm -qf notes/badfm.md notes/goodfm.md >/dev/null 2>&1
 
 echo "--- catalog + neighbors ---"
 cout=$($Q --root "$W" --catalog)
@@ -166,6 +166,48 @@ assert_contains "catalog reports page count" "catalog.tsv" "$cout"
 assert_contains "catalog lists beta.md" "concepts/beta.md" "$(cat "$W/catalog.tsv")"
 nout=$($Q --root "$W" --neighbors beta concept)
 assert_contains "neighbors surfaces a 1-hop link" "entities/alpha.md" "$nout"
+
+echo "--- collision + index-drift advisories ---"
+cat > "$W/concepts/beta-dup.md" <<'EOF'
+---
+type: concept
+title: Beta Concept
+---
+A second page claiming the name "Beta Concept".
+EOF
+cat > "$W/concepts/gamma.md" <<'EOF'
+---
+type: concept
+title: Gamma Concept
+---
+A page the concepts index does not list.
+EOF
+git -C "$W" add -A >/dev/null 2>&1
+core=$(python3 "$H/lint-core.py" "$W")
+assert_contains "duplicate title flagged" 'COLLISION "Beta Concept"' "$core"
+assert_contains "collision names the duplicate page" "concepts/beta-dup.md" "$core"
+assert_contains "unindexed page flagged" "UNINDEXED concepts/gamma.md" "$core"
+assert "indexed page not flagged" "0" "$(printf '%s\n' "$core" | grep -c 'UNINDEXED concepts/beta.md')"
+bash "$H/lint.sh" "$W" >/dev/null 2>&1; rc=$?
+assert "collision/unindexed stay advisory (gate passes)" "0" "$rc"
+echo '{"collision_exempt": ["beta concept"]}' > "$W/wiki.config.json"
+core=$(python3 "$H/lint-core.py" "$W")
+assert "collision_exempt drops the collision" "0" "$(printf '%s\n' "$core" | grep -c 'COLLISION')"
+rm "$W/wiki.config.json"
+git -C "$W" rm -qf concepts/beta-dup.md concepts/gamma.md >/dev/null 2>&1
+
+echo "--- rewrite-links: dry-run plans, apply repoints, lint stays green ---"
+git -C "$W" mv concepts/beta.md concepts/beta-renamed.md
+dry=$(python3 "$H/rewrite-links.py" concepts/beta.md concepts/beta-renamed.md "$W")
+assert_contains "dry-run plans the alpha rewrite" "REWRITE entities/alpha.md" "$dry"
+assert_contains "dry-run leaves files untouched" "(../concepts/beta.md)" "$(cat "$W/entities/alpha.md")"
+python3 "$H/rewrite-links.py" concepts/beta.md concepts/beta-renamed.md "$W" --apply >/dev/null
+assert_contains "apply repoints alpha's link" "(../concepts/beta-renamed.md)" "$(cat "$W/entities/alpha.md")"
+assert_contains "apply repoints the index link" "(beta-renamed.md)" "$(cat "$W/concepts/index.md")"
+git -C "$W" add -A >/dev/null 2>&1
+core=$(python3 "$H/lint-core.py" "$W")
+assert_contains "no broken links after rename+rewrite" "broken=0" "$core"
+git -C "$W" -c user.name=t -c user.email=t@t commit -qm c3
 
 echo "--- template scaffold lints clean + pre-commit gate blocks ---"
 # wiki-setup's deterministic core: templates/tree + the wiki's own hook copies must yield a
@@ -175,7 +217,7 @@ mkdir -p "$T"
 cp -R "$ROOT/templates/tree/." "$T/"
 mv "$T/gitignore" "$T/.gitignore"
 mkdir -p "$T/hooks"
-for f in lint.sh lint-core.py graph-check.py missed-links.py stale-source.py reflect-scope.py wikilib.py pre-commit; do
+for f in lint.sh lint-core.py graph-check.py missed-links.py stale-source.py reflect-scope.py rewrite-links.py wikilib.py pre-commit; do
   cp "$ROOT/hooks/$f" "$T/hooks/"
 done
 git -C "$T" init -q

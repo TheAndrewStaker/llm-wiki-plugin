@@ -37,6 +37,8 @@ DEFAULTS = {
     "type_exempt_extra": [],
     # lowercased terms too generic to require a canonical link to (missed-link stoplist)
     "missed_link_stop": [],
+    # lowercased titles/aliases allowed on more than one page (collision advisory exemptions)
+    "collision_exempt": [],
     # advisory "consider re-confirming" age for timestamp:
     "stale_days": 120,
     # a wiki with fewer than this many content pages is "young" (capture, don't query)

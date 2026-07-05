@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Deterministic wiki lint, single-pass (fast). Checks: broken relative links, missing
-type: frontmatter, commit-gate tokens, stale timestamps, orphan pages. Always exits 0;
-lint.sh decides the gate. Standalone: python3 hooks/lint-core.py [WIKI_ROOT]
+type: frontmatter, commit-gate tokens, stale timestamps, orphan pages, title/alias
+collisions (two pages claiming the same name), and pages missing from their dir's
+index.md. Always exits 0; lint.sh decides the gate.
+Standalone: python3 hooks/lint-core.py [WIKI_ROOT]
 Ends with a machine line:
-    CORE broken=<n> unresolved=<n> notype=<n> stale=<n> orphan=<n>
+    CORE broken=<n> unresolved=<n> badyaml=<n> notype=<n> stale=<n> orphan=<n> collision=<n> unindexed=<n>
 """
 import datetime
 import os
@@ -39,7 +41,36 @@ mdlink = re.compile(r"\]\(([^)]+)\)")
 fence = re.compile(r"^\s*(```|~~~)")
 keyline = re.compile(r"^([A-Za-z_][\w-]*):[ \t]*(.*)$")
 issues, linked = [], set()
-broken = unresolved = notype = stale = orphan = badyaml = 0
+broken = unresolved = notype = stale = orphan = badyaml = collision = unindexed = 0
+
+content_dirs = tuple(cfg["content_dirs"])
+collision_stop = {s.lower() for s in cfg["collision_exempt"]}
+names = {}          # normalized title/alias -> (display, [pages claiming it])
+dir_indexes = {}    # content dir -> [its index.md files]
+index_targets = {}  # index file -> set of resolved link targets
+
+
+def content_page(f, b):
+    return (f.startswith(content_dirs) and b != "index.md"
+            and not f.endswith(".base") and not wikilib.is_memory(f))
+
+
+def fm_aliases(fm_text):
+    m = re.search(r"^aliases:\s*(.*)$", fm_text, re.M)
+    if not m:
+        return []
+    val = m.group(1).strip()
+    if val.startswith("["):
+        return [a.strip().strip("'\"") for a in val.strip("[]").split(",") if a.strip()]
+    if val:
+        return [val.strip("'\"")]
+    out = []
+    for line in fm_text[m.end():].lstrip("\n").split("\n"):
+        item = re.match(r"^\s*-\s+(.+)$", line)
+        if not item:
+            break
+        out.append(item.group(1).strip().strip("'\""))
+    return out
 
 
 def bad_yaml_keys(fm_text):
@@ -79,6 +110,12 @@ for f in files:
     except OSError:
         continue
     d = os.path.dirname(f)
+    b = os.path.basename(f)
+    is_index = b == "index.md" and f.startswith(content_dirs)
+    if is_index:
+        for cd in content_dirs:
+            if f.startswith(cd):
+                dir_indexes.setdefault(cd, []).append(f)
     in_fence = False
     for line in text.split("\n"):
         if fence.match(line):
@@ -96,14 +133,26 @@ for f in files:
             tgt = t.lstrip("/") if t.startswith("/") else os.path.normpath(os.path.join(d, t))
             if os.path.exists(tgt):
                 linked.add(tgt)
+                if is_index:
+                    index_targets.setdefault(f, set()).add(tgt)
             else:
                 issues.append(f"  BROKEN LINK {f} -> {t}")
                 broken += 1
     if re.search(r"(?im)^\s*(Status:\s*Unresolved|Contradiction severity:\s*hard)", text):
         issues.append(f"  UNRESOLVED {f}")
         unresolved += 1
-    b = os.path.basename(f)
     fmblock = re.match(r"^---\n(.*?)\n---", text, re.S)
+    # collect the names (title + aliases) each content page claims, for the collision check
+    if fmblock and content_page(f, b):
+        claimed = set()
+        tm = re.search(r"^title:\s*(.+)$", fmblock.group(1), re.M)
+        if tm:
+            claimed.add(tm.group(1).strip().strip("'\""))
+        claimed.update(fm_aliases(fmblock.group(1)))
+        for name in claimed:
+            norm = re.sub(r"\s+", " ", name).strip().lower()
+            if len(norm) >= 3 and norm not in collision_stop:
+                names.setdefault(norm, (name, []))[1].append(f)
     # malformed-YAML frontmatter (checked on every file that has a frontmatter block)
     if fmblock:
         for k in bad_yaml_keys(fmblock.group(1)):
@@ -130,6 +179,26 @@ for f in files:
         issues.append(f"  ORPHAN {f}")
         orphan += 1
 
+# collision: the same title/alias claimed by more than one content page breaks
+# "one home per fact" (and makes search/alias resolution ambiguous). Advisory.
+for norm in sorted(names):
+    disp, pages = names[norm]
+    if len(set(pages)) > 1:
+        issues.append(f"  COLLISION \"{disp}\" -> {', '.join(sorted(set(pages)))}")
+        collision += 1
+
+# index drift: every content page should be reachable from an index.md of its own
+# type-dir (Ingest contract step 4). Dirs without any index.md are skipped. Advisory.
+for cd, idxs in sorted(dir_indexes.items()):
+    reachable = set()
+    for idx in idxs:
+        reachable |= index_targets.get(idx, set())
+    for f in files:
+        if content_page(f, os.path.basename(f)) and f.startswith(cd) and f not in reachable:
+            issues.append(f"  UNINDEXED {f} (not linked from an index.md under {cd})")
+            unindexed += 1
+
 for line in issues:
     print(line)
-print(f"CORE broken={broken} unresolved={unresolved} badyaml={badyaml} notype={notype} stale={stale} orphan={orphan}")
+print(f"CORE broken={broken} unresolved={unresolved} badyaml={badyaml} notype={notype} "
+      f"stale={stale} orphan={orphan} collision={collision} unindexed={unindexed}")
