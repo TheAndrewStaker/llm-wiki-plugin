@@ -21,16 +21,18 @@ This implements three published conventions and adopts their shared vocabulary:
    - **Query**: the `query` skill (index-first, link-walk, answer with citations, file the answer back) on top of `bin/wiki-query` lexical search.
    - **Ingest**: `ingest-source` (articles/PDFs/books) and `meeting-notes` (transcripts) stage raw sources in `sources/` and write cross-linked synthesis pages.
    - **Reflect**: scoped, reversible staleness/contradiction pass — proposals to a dated log, applied only after user confirmation. `hooks/reflect-scope.py` bounds each pass; `hooks/stale-source.py` flags pages whose `synthesized_from:` source changed.
+   - **Audit**: per-page citation check (`audit` skill) — verify each claim against the sources it cites (subagent per source, optional adversarial pass), findings to a checkbox report, applied only after confirmation.
+   - **Merge/split**: the `merge-split` skill repairs "one home per fact" violations (lint's COLLISION advisory) — fold duplicates into a survivor or split an overloaded page, with `hooks/rewrite-links.py` repointing every inbound link deterministically; superseded pages archive, never delete.
    - **Wrap**: the `/wrap` command files a session's durable findings and commits.
    - **Auto-commit**: `hooks/auto-commit.sh` (Stop/SessionEnd hooks) commits wiki changes at the end of each turn, so the wiki is always versioned without ceremony.
-   - **Lint gate**: `hooks/lint.sh` hard-fails on broken links, unresolved commit-gate tokens, and malformed YAML frontmatter (fail-closed: a crash blocks, never passes blind); orphans / islands / missed-links / no-type / stale are advisory. Runs as the wiki's pre-commit and on demand.
+   - **Lint gate**: `hooks/lint.sh` hard-fails on broken links, unresolved commit-gate tokens, and malformed YAML frontmatter (fail-closed: a crash blocks, never passes blind); orphans / islands / missed-links / no-type / stale / title-alias collisions / unindexed pages are advisory. Runs as the wiki's pre-commit and on demand.
 
 ## What's here
 
-- `hooks/` — the deterministic engine: `lint.sh` (+ `lint-core.py`, `graph-check.py`, `missed-links.py`), `stale-source.py`, `reflect-scope.py`, and lifecycle hooks `session-status.sh` / `auto-commit.sh` / `pre-commit`. All read per-wiki settings from `wiki.config.json` via `wikilib.py`; no host-specific assumptions.
+- `hooks/` — the deterministic engine: `lint.sh` (+ `lint-core.py`, `graph-check.py`, `missed-links.py`), `stale-source.py`, `reflect-scope.py`, `rewrite-links.py`, and lifecycle hooks `session-status.sh` / `auto-commit.sh` / `pre-commit`. All read per-wiki settings from `wiki.config.json` via `wikilib.py`; no host-specific assumptions.
 - `bin/wiki-query` — deterministic BM25 lexical search (no model, no network): `wiki-query [--type T] [--tag T] [--neighbors] [--limit N] TERMS`, `--catalog` to (re)write `catalog.tsv`, `--health` for a deterministic index-size recall tripwire. **Indexes git-tracked pages only** (`git ls-files`; `sources/` excluded) — a page is findable once committed, which the auto-commit hook does each turn; in a wiki that is not a git repo, search returns nothing.
 - `templates/` — wiki scaffolding: the full type-dir tree with index stubs, `KNOWLEDGE.md` / `STATE.md` / `ROADMAP.md`, `wiki.config.json`, the allowlist `gitignore` (renamed on install), and `CLAUDE.stanza.md` (the contract that makes sessions consult the wiki).
-- `skills/` — `wiki-setup`, `wiki-init`, `reflect`, `ingest-source`, `meeting-notes`, `query`; plus `commands/wrap.md` (the `/wrap` slash command).
+- `skills/` — `wiki-setup`, `wiki-init`, `reflect`, `audit`, `merge-split`, `ingest-source`, `meeting-notes`, `query`; plus `commands/wrap.md` (the `/wrap` slash command).
 - `tests/` — self-contained golden-output harness (`bash tests/run.sh`): builds a throwaway fixture wiki with git history and asserts over the lint / query / stale / health stack.
 - `scripts/check-no-org.sh` — org-residue scanner (terms live in a gitignored denylist), run as part of the test suite.
 

@@ -58,7 +58,9 @@ by the freshness check); optional `reviewed:` records the last re-verification.
 **Ingest** (drop a source → process it): 1. Read the source from `sources/` (immutable). 2. Discuss
 takeaways (heavy source = interactive; trivial = propose-then-confirm). 3. Write/update a synthesis page in
 the right type-dir. 4. Update the relevant index. 5. Update linked entity/concept pages. 6. Extract any
-decisions → the decision routing above. 7. Cross-link with relative md links. The git commit is the log.
+decisions → the decision routing above. 7. Cross-link with relative md links, then backlink-sweep: run
+`hooks/missed-links.py` and link any flagged mention of (or by) the pages you touched, both directions.
+The git commit is the log.
 
 **Query** (ask the wiki): consult the **index first**; then `wiki-query <terms>` (deterministic lexical
 search, `--type/--tag/--neighbors`) to locate pages; link-walk; **answer with citations** (relative-md

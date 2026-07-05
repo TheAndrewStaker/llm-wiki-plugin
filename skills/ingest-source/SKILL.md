@@ -44,7 +44,11 @@ touches; extract any decisions (decision routing in `KNOWLEDGE.md`); cross-link 
 If the wiki's declared knowledge topology (KNOWLEDGE.md "Local configuration") routes team-audience material
 to a team home, file it there and keep the pointer + your view here.
 
-## Step 5 — Verify before finishing
+## Step 5 — Backlink sweep, then verify
+- **Backlink sweep** (contract step 7): run `python3 "$WIKI_ROOT/hooks/missed-links.py"` and act on any
+  flagged pair that involves a page you created or updated, in both directions: link the new page where
+  existing prose already mentions it, and link mentioned entities/concepts from the new page. Leave
+  flags on untouched pages for `reflect`.
 - The page has `type:` frontmatter (+ `title`, `timestamp`, `synthesized_from:`).
 - `git add -A` in the wiki first (lint iterates git-TRACKED files), then run `bash "$WIKI_ROOT/hooks/lint.sh"`;
   it must stay green. The git commit is the log entry.
