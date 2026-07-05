@@ -97,5 +97,27 @@ def frontmatter_value(text, key):
     return m.group(1).strip() if m else None
 
 
+def fm_aliases(fm_text):
+    """Parse aliases: from a frontmatter block — inline flow ([a, b]), single scalar,
+    or block list. Shared by lint-core (collisions) and wanted-pages (resolution) so
+    the two can never disagree on what names a page answers to."""
+    # [ \t]* not \s*: \s would eat the newline and swallow the first block-list item
+    m = re.search(r"^aliases:[ \t]*(.*)$", fm_text, re.M)
+    if not m:
+        return []
+    val = m.group(1).strip()
+    if val.startswith("["):
+        return [a.strip().strip("'\"") for a in val.strip("[]").split(",") if a.strip()]
+    if val:
+        return [val.strip("'\"")]
+    out = []
+    for line in fm_text[m.end():].lstrip("\n").split("\n"):
+        item = re.match(r"^\s*-\s+(.+)$", line)
+        if not item:
+            break
+        out.append(item.group(1).strip().strip("'\""))
+    return out
+
+
 def is_memory(f):
     return f.startswith("projects/") and "/memory/" in f

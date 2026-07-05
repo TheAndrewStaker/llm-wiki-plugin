@@ -268,6 +268,65 @@ assert_contains "unresolved wikilink ranked with count" "WANTED [[gadget spec]] 
 assert "wikilink matching an existing title is resolved" "0" "$(printf '%s\n' "$wanted" | grep -c 'alpha system')"
 git -C "$W" rm -qf notes/wishlist.md >/dev/null 2>&1
 
+echo "--- shared alias parsing + fenced supersede example (review fixes) ---"
+cat > "$W/concepts/gizmo.md" <<'EOF'
+---
+type: concept
+title: Gizmo Framework
+aliases:
+  - The Gizmo
+  - gizmo-fw
+---
+Outgoing: [alpha](../entities/alpha.md).
+EOF
+cat > "$W/notes/gizmo-note.md" <<'EOF'
+---
+type: notes
+title: Gizmo note
+synthesized_from: ../sources/beta-src.md
+---
+Mentions [[The Gizmo|the framework]] and [[gizmo-fw]] and [[Missing Thing]].
+Links [alpha](../entities/alpha.md).
+EOF
+git -C "$W" add -A >/dev/null 2>&1
+wanted=$(python3 "$H/wanted-pages.py" "$W")
+assert "block alias resolves a display wikilink" "0" "$(printf '%s\n' "$wanted" | grep -c 'the gizmo')"
+assert "block alias resolves a plain wikilink" "0" "$(printf '%s\n' "$wanted" | grep -c 'gizmo fw')"
+assert_contains "unknown name still wanted" "WANTED [[missing thing]]" "$wanted"
+cat > "$W/concepts/gizmo2.md" <<'EOF'
+---
+type: concept
+title: Gizmo Two
+aliases: [Gizmo Framework]
+---
+Body. [alpha](../entities/alpha.md).
+EOF
+cat > "$W/notes/docsup.md" <<'EOF'
+---
+type: notes
+title: Supersede convention doc
+synthesized_from: ../sources/beta-src.md
+---
+The convention, as an example:
+```
+Status: Superseded
+```
+See [alpha](../entities/alpha.md).
+EOF
+cat > "$W/notes/docsup-linker.md" <<'EOF'
+---
+type: notes
+title: Linker note
+synthesized_from: ../sources/beta-src.md
+---
+Cites the [convention doc](docsup.md).
+EOF
+git -C "$W" add -A >/dev/null 2>&1
+core=$(python3 "$H/lint-core.py" "$W")
+assert_contains "alias-vs-title collision flagged" 'COLLISION "Gizmo Framework"' "$core"
+assert "fenced supersede example is not a superseded page" "0" "$(printf '%s\n' "$core" | grep -c 'STALE-POINTER notes/docsup-linker.md')"
+git -C "$W" rm -qf concepts/gizmo.md concepts/gizmo2.md notes/gizmo-note.md notes/docsup.md notes/docsup-linker.md >/dev/null 2>&1
+
 echo "--- template scaffold lints clean + pre-commit gate blocks ---"
 # wiki-setup's deterministic core: templates/tree + the wiki's own hook copies must yield a
 # lint-green wiki whose pre-commit rejects a broken link and passes a clean commit.

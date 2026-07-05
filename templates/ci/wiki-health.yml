@@ -21,13 +21,15 @@ on:
   workflow_dispatch: {}
 permissions:
   contents: read
-  issues: write
 concurrency:
   group: wiki-health
   cancel-in-progress: true
 jobs:
   health:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -69,4 +71,9 @@ jobs:
           args: --no-progress --exclude-path sources -- './**/*.md'
           fail: false
       - name: Surface the lychee report
-        run: cat lychee/out.md >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          if [ -f lychee/out.md ]; then
+            cat lychee/out.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "lychee produced no report" >> "$GITHUB_STEP_SUMMARY"
+          fi

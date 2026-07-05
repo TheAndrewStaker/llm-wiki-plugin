@@ -28,20 +28,19 @@ def norm(s):
     return re.sub(r"[\s_-]+", " ", s).strip().lower()
 
 
-# every name an existing page answers to: basename, title, aliases
+# every name an existing page answers to: basename, title, aliases (inline OR block
+# style, via the shared wikilib.fm_aliases so this never disagrees with lint-core)
 known = set()
-alias_line = re.compile(r"^aliases:\s*(.*)$", re.M)
 for f in files:
     known.add(norm(os.path.splitext(os.path.basename(f))[0]))
-    head = wikilib.read(KB, f)[:1200]
-    m = re.search(r"^title:\s*(.+)$", head, re.M)
+    fmblock = re.match(r"^---\n(.*?)\n---", wikilib.read(KB, f), re.S)
+    if not fmblock:
+        continue
+    m = re.search(r"^title:\s*(.+)$", fmblock.group(1), re.M)
     if m:
         known.add(norm(m.group(1).strip().strip("'\"")))
-    m = alias_line.search(head)
-    if m and m.group(1).strip().startswith("["):
-        for a in m.group(1).strip().strip("[]").split(","):
-            if a.strip():
-                known.add(norm(a.strip().strip("'\"")))
+    for a in wikilib.fm_aliases(fmblock.group(1)):
+        known.add(norm(a))
 
 wikilink = re.compile(r"\[\[([^\]\[]+)\]\]")
 fence = re.compile(r"^\s*(```|~~~)")
@@ -62,8 +61,10 @@ for f in files:
             mentions[norm(target)] += 1
             pages[norm(target)].add(f)
 
-for name, n in mentions.most_common(20):
+shown = mentions.most_common(20)
+for name, n in shown:
     where = ", ".join(sorted(pages[name])[:4])
-    issue_line = f"  WANTED [[{name}]] ({n} mention{'s' if n > 1 else ''}: {where})"
-    print(issue_line)
+    print(f"  WANTED [[{name}]] ({n} mention{'s' if n > 1 else ''}: {where})")
+if len(mentions) > len(shown):
+    print(f"  ... {len(mentions) - len(shown)} more (top 20 shown)")
 print(f"WANTED={len(mentions)} MENTIONS={sum(mentions.values())}")

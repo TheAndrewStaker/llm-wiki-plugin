@@ -13,6 +13,7 @@
   "orphan_exempt_extra": [],
   "missed_link_stop": [],
   "collision_exempt": [],
+  "_comment_types": "type_requirements keys must match YOUR type: vocabulary (KNOWLEDGE.md 'Types'); a key matching no type silently never fires.",
   "type_requirements": {
     "notes": ["synthesized_from"],
     "analysis": ["synthesized_from"],

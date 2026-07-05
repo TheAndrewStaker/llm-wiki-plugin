@@ -16,7 +16,9 @@ cross-reference graph. **You curate the content; the agent keeps it current and 
   pages), `comparison`, `synthesis`, `analysis`, `map`; work overlay — `index`, `state`, `roadmap`,
   `initiative`, `decision-log`, `open-asks`, `reference`, `archive`, `draft`. The lint only requires that
   `type:` is present, not that it is one of these — so a domain-specific wiki may define its OWN types
-  (declare them here + add their dirs to `wiki.config.json`); no code change needed.
+  (declare them here + add their dirs to `wiki.config.json`); no code change needed. If you rename types,
+  keep `type_requirements` in `wiki.config.json` keyed to the same vocabulary — a key that matches no
+  `type:` value silently never fires.
 - **Layering by horizon:** `STATE.md` = current focus (crisp handoff) · `ROADMAP.md` = long-horizon/parked ·
   `initiatives/<name>.md` = per-initiative deep state · `archive/<period>.md` = done (append-only).
 - **Decisions — routing:** a decided record with rationale → `decisions/<name>.md` (`type: decision-log`);

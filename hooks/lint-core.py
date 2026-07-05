@@ -63,22 +63,7 @@ def content_page(f, b):
             and not f.endswith(".base") and not wikilib.is_memory(f))
 
 
-def fm_aliases(fm_text):
-    m = re.search(r"^aliases:\s*(.*)$", fm_text, re.M)
-    if not m:
-        return []
-    val = m.group(1).strip()
-    if val.startswith("["):
-        return [a.strip().strip("'\"") for a in val.strip("[]").split(",") if a.strip()]
-    if val:
-        return [val.strip("'\"")]
-    out = []
-    for line in fm_text[m.end():].lstrip("\n").split("\n"):
-        item = re.match(r"^\s*-\s+(.+)$", line)
-        if not item:
-            break
-        out.append(item.group(1).strip().strip("'\""))
-    return out
+fm_aliases = wikilib.fm_aliases
 
 
 def bad_yaml_keys(fm_text):
@@ -152,10 +137,15 @@ for f in files:
     if re.search(r"(?im)^\s*(Status:\s*Unresolved|Contradiction severity:\s*hard)", text):
         issues.append(f"  UNRESOLVED {f}")
         unresolved += 1
-    if (re.search(r"(?im)^\s*Status:\s*Superseded", text)
-            or wikilib.frontmatter_value(text, "superseded_by")):
-        superseded.add(f)
     fmblock = re.match(r"^---\n(.*?)\n---", text, re.S)
+    # supersede token: search with fences and inline code stripped so a page that merely
+    # DOCUMENTS the convention is not marked superseded; superseded_by: must sit in the
+    # real frontmatter block
+    stripped = re.sub(r"(?s)(```|~~~).*?(\1|\Z)", "", text)
+    stripped = re.sub(r"`[^`]*`", "", stripped)
+    if (re.search(r"(?im)^\s*Status:\s*Superseded", stripped)
+            or (fmblock and re.search(r"^superseded_by:\s*\S", fmblock.group(1), re.M))):
+        superseded.add(f)
     # collect the names (title + aliases) each content page claims, for the collision check
     if fmblock and content_page(f, b):
         claimed = set()
