@@ -22,6 +22,7 @@ core=$(python3 "$H/lint-core.py" "$KB" 2>"$core_err")
 core_rc=$?
 graph=$(python3 "$H/graph-check.py" "$KB" 2>/dev/null || true)
 missed=$(python3 "$H/missed-links.py" "$KB" 2>/dev/null || true)
+wanted=$(python3 "$H/wanted-pages.py" "$KB" 2>/dev/null || true)
 
 echo "${C}== knowledge-base lint ==${Z}"
 if [ "$core_rc" -ne 0 ]; then
@@ -33,6 +34,7 @@ rm -f "$core_err"
 printf '%s\n' "$core"   | grep -vE '^CORE ' || true
 printf '%s\n' "$graph"  | grep '^  ISLAND' || true
 printf '%s\n' "$missed" | grep '^  MISSED-LINK' || true
+printf '%s\n' "$wanted" | grep '^  WANTED' || true
 
 b=$(printf '%s\n'  "$core"   | sed -n 's/^CORE broken=\([0-9]*\).*/\1/p')
 u=$(printf '%s\n'  "$core"   | sed -n 's/^CORE [^ ]* unresolved=\([0-9]*\).*/\1/p')
@@ -48,8 +50,9 @@ sp=$(printf '%s\n' "$core"   | sed -n 's/.* staleptr=\([0-9]*\).*/\1/p')
 ch=$(printf '%s\n' "$core"   | sed -n 's/.* chain=\([0-9]*\)$/\1/p')
 islands=$(printf '%s\n' "$graph"  | sed -n 's/^COMPONENTS=[0-9]* ISLAND_NODES=//p')
 ml=$(printf '%s\n' "$missed" | sed -n 's/^MISSED_LINKS=//p')
+wp=$(printf '%s\n' "$wanted" | sed -n 's/^WANTED=\([0-9]*\).*/\1/p')
 
-echo "${C}== summary ==${Z}  broken-links:${b:-?}  unresolved:${u:-?}  bad-yaml:${by:-?}  orphans:${orp:-?}  islands:${islands:-?}  missed-links:${ml:-?}  no-type:${nt:-?}  stale:${st:-?}  collisions:${col:-?}  unindexed:${unx:-?}  missing-fields:${mf:-?}  dead-ends:${de:-?}  stale-pointers:${sp:-?}  chains:${ch:-?}"
+echo "${C}== summary ==${Z}  broken-links:${b:-?}  unresolved:${u:-?}  bad-yaml:${by:-?}  orphans:${orp:-?}  islands:${islands:-?}  missed-links:${ml:-?}  no-type:${nt:-?}  stale:${st:-?}  collisions:${col:-?}  unindexed:${unx:-?}  missing-fields:${mf:-?}  dead-ends:${de:-?}  stale-pointers:${sp:-?}  chains:${ch:-?}  wanted:${wp:-?}"
 # If the gate counters didn't parse, the CORE line is malformed -> fail closed, don't pass blind.
 if [ -z "$b" ] || [ -z "$u" ] || [ -z "$by" ]; then
   echo "${R}FAIL${Z} (could not read lint-core counts; failing closed)"; exit 2

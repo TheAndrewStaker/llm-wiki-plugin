@@ -252,6 +252,22 @@ bash "$H/lint.sh" "$W" >/dev/null 2>&1; rc=$?
 assert "new checks stay advisory (gate passes)" "0" "$rc"
 git -C "$W" rm -qf archive/older-widget.md archive/old-widget.md notes/pointer.md >/dev/null 2>&1
 
+echo "--- wanted-pages red-link ranking ---"
+cat > "$W/notes/wishlist.md" <<'EOF'
+---
+type: notes
+title: Wishlist note
+synthesized_from: ../sources/beta-src.md
+---
+We keep citing [[Gadget Spec]] and again [[Gadget Spec]], plus [[Alpha System]].
+Links [Beta Concept](../concepts/beta-renamed.md) so it is not a dead end.
+EOF
+git -C "$W" add -A >/dev/null 2>&1
+wanted=$(python3 "$H/wanted-pages.py" "$W")
+assert_contains "unresolved wikilink ranked with count" "WANTED [[gadget spec]] (2 mentions" "$wanted"
+assert "wikilink matching an existing title is resolved" "0" "$(printf '%s\n' "$wanted" | grep -c 'alpha system')"
+git -C "$W" rm -qf notes/wishlist.md >/dev/null 2>&1
+
 echo "--- template scaffold lints clean + pre-commit gate blocks ---"
 # wiki-setup's deterministic core: templates/tree + the wiki's own hook copies must yield a
 # lint-green wiki whose pre-commit rejects a broken link and passes a clean commit.
@@ -260,7 +276,7 @@ mkdir -p "$T"
 cp -R "$ROOT/templates/tree/." "$T/"
 mv "$T/gitignore" "$T/.gitignore"
 mkdir -p "$T/hooks"
-for f in lint.sh lint-core.py graph-check.py missed-links.py stale-source.py reflect-scope.py rewrite-links.py wikilib.py pre-commit; do
+for f in lint.sh lint-core.py graph-check.py missed-links.py stale-source.py reflect-scope.py rewrite-links.py wanted-pages.py wikilib.py pre-commit; do
   cp "$ROOT/hooks/$f" "$T/hooks/"
 done
 git -C "$T" init -q

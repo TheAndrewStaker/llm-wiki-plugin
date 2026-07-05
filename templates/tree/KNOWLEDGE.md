@@ -26,6 +26,9 @@ cross-reference graph. **You curate the content; the agent keeps it current and 
   cross-reference graph, portable (no hardcoded home path), and clickable in most editors. Always include
   the real relative path ending in `.md`. (Reserve absolute URLs for output to a human, not for links
   inside these files.)
+- **Red links:** an unresolved `[[name]]` is the deliberate marker for a page worth writing later (it is
+  not an error). `hooks/wanted-pages.py` ranks these by mention count — the wanted-pages report — so the
+  most-referenced missing pages get written first.
 - **Casing:** top-level landmark singletons UPPERCASE (`CLAUDE.md`, `STATE.md`, `ROADMAP.md`,
   `KNOWLEDGE.md`) so they sort to the top; content inside type-dirs lowercase (the dir name carries the
   type).
