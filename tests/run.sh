@@ -209,6 +209,49 @@ core=$(python3 "$H/lint-core.py" "$W")
 assert_contains "no broken links after rename+rewrite" "broken=0" "$core"
 git -C "$W" -c user.name=t -c user.email=t@t commit -qm c3
 
+echo "--- per-type required fields + dead ends + supersede hygiene ---"
+core=$(python3 "$H/lint-core.py" "$W")
+assert_contains "notes page missing synthesized_from flagged" "MISSING-FIELD notes/orphan.md" "$core"
+assert_contains "entity missing description flagged" "MISSING-FIELD entities/alpha.md" "$core"
+assert_contains "linkless page is a dead end" "DEADEND notes/orphan.md" "$core"
+assert "linked page is not a dead end" "0" "$(printf '%s\n' "$core" | grep -c 'DEADEND entities/alpha.md')"
+echo '{"type_requirements": {}}' > "$W/wiki.config.json"
+core=$(python3 "$H/lint-core.py" "$W")
+assert "type_requirements config seam empties the check" "0" "$(printf '%s\n' "$core" | grep -c 'MISSING-FIELD')"
+rm "$W/wiki.config.json"
+mkdir -p "$W/archive"
+cat > "$W/archive/older-widget.md" <<'EOF'
+---
+type: archive
+title: Older widget notes
+---
+Status: Superseded
+Superseded by [old widget notes](old-widget.md).
+EOF
+cat > "$W/archive/old-widget.md" <<'EOF'
+---
+type: archive
+title: Old widget notes
+---
+Status: Superseded
+Superseded by [Beta Concept](../concepts/beta-renamed.md); see also [older](older-widget.md).
+EOF
+cat > "$W/notes/pointer.md" <<'EOF'
+---
+type: notes
+title: Pointer note
+synthesized_from: ../sources/beta-src.md
+---
+Still cites [old widget notes](../archive/old-widget.md).
+EOF
+git -C "$W" add -A >/dev/null 2>&1
+core=$(python3 "$H/lint-core.py" "$W")
+assert_contains "live link to superseded page flagged" "STALE-POINTER notes/pointer.md" "$core"
+assert_contains "superseded chain flagged" "CHAIN archive/old-widget.md -> archive/older-widget.md" "$core"
+bash "$H/lint.sh" "$W" >/dev/null 2>&1; rc=$?
+assert "new checks stay advisory (gate passes)" "0" "$rc"
+git -C "$W" rm -qf archive/older-widget.md archive/old-widget.md notes/pointer.md >/dev/null 2>&1
+
 echo "--- template scaffold lints clean + pre-commit gate blocks ---"
 # wiki-setup's deterministic core: templates/tree + the wiki's own hook copies must yield a
 # lint-green wiki whose pre-commit rejects a broken link and passes a clean commit.

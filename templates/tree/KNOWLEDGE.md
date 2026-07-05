@@ -68,9 +68,11 @@ search, `--type/--tag/--neighbors`) to locate pages; link-walk; **answer with ci
 links to the pages used); **file good answers back as pages** so explorations compound.
 
 **Lint** (`hooks/lint.sh`, deterministic, pre-commit-gated): broken links, orphans, missing `type:`,
-commit-gate tokens, stale dates, title/alias collisions (two pages claiming one name), and pages missing
-from their dir's `index.md`. The judgment pass (contradictions, stale-superseded claims, missing pages,
-weak links) is the `reflect` skill — it proposes; you dispose.
+commit-gate tokens, stale dates, title/alias collisions (two pages claiming one name), pages missing
+from their dir's `index.md`, per-type required frontmatter (`type_requirements` in `wiki.config.json`),
+dead-end pages (no outgoing wiki links), and supersede hygiene (live links to superseded pages; superseded
+chains). The judgment pass (contradictions, stale-superseded claims, missing pages, weak links) is the
+`reflect` skill — it proposes; you dispose.
 
 ## Staleness policy (no calendar sweeps)
 - **Structural** (broken links, orphans, missing `type`) — deterministic, caught continuously by lint.
@@ -78,8 +80,9 @@ weak links) is the `reflect` skill — it proposes; you dispose.
   reconcile (every ingest/query touches related pages), source-freshness triage (`stale-source.py`, flags a
   page when its `synthesized_from:` source changed), and scoped reflection (`reflect`, proposes edits to a
   dated log you confirm). No age-based auto-expiry.
-- **Supersede:** a replaced page carries a status token + a relative-md pointer to its successor (via
-  `archive/`).
+- **Supersede:** a replaced page carries the token `Status: Superseded` (or frontmatter
+  `superseded_by:`) + a relative-md pointer to its successor (via `archive/`). Lint flags live pages
+  still linking a superseded page, and superseded pages whose pointer targets another superseded page.
 
 ## The wiki layout
 - [entities/](entities/index.md) — one page per person, org, product, data asset (with `aliases:`).

@@ -13,6 +13,11 @@
   "orphan_exempt_extra": [],
   "missed_link_stop": [],
   "collision_exempt": [],
+  "type_requirements": {
+    "notes": ["synthesized_from"],
+    "analysis": ["synthesized_from"],
+    "entity": ["description"]
+  },
   "stale_days": 120,
   "young_wiki_pages": 20,
   "session_read_budget_words": 20000

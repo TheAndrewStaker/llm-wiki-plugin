@@ -39,6 +39,13 @@ DEFAULTS = {
     "missed_link_stop": [],
     # lowercased titles/aliases allowed on more than one page (collision advisory exemptions)
     "collision_exempt": [],
+    # per-type required frontmatter fields (advisory MISSING-FIELD; Wikidata-style hints).
+    # Keys are type: values; values are lists of frontmatter keys that type should carry.
+    "type_requirements": {
+        "notes": ["synthesized_from"],
+        "analysis": ["synthesized_from"],
+        "entity": ["description"],
+    },
     # advisory "consider re-confirming" age for timestamp:
     "stale_days": 120,
     # a wiki with fewer than this many content pages is "young" (capture, don't query)

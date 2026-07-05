@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """Deterministic wiki lint, single-pass (fast). Checks: broken relative links, missing
 type: frontmatter, commit-gate tokens, stale timestamps, orphan pages, title/alias
-collisions (two pages claiming the same name), and pages missing from their dir's
-index.md. Always exits 0; lint.sh decides the gate.
+collisions (two pages claiming the same name), pages missing from their dir's index.md,
+per-type required frontmatter fields, dead-end pages (no outgoing wiki links), live
+pages linking a superseded page, and superseded pages chaining to superseded pages.
+Always exits 0; lint.sh decides the gate.
 Standalone: python3 hooks/lint-core.py [WIKI_ROOT]
-Ends with a machine line:
-    CORE broken=<n> unresolved=<n> badyaml=<n> notype=<n> stale=<n> orphan=<n> collision=<n> unindexed=<n>
+Ends with a machine line (all counts on one line):
+    CORE broken= unresolved= badyaml= notype= stale= orphan= collision= unindexed=
+         missingfield= deadend= staleptr= chain=
 """
 import datetime
 import os
@@ -42,12 +45,17 @@ fence = re.compile(r"^\s*(```|~~~)")
 keyline = re.compile(r"^([A-Za-z_][\w-]*):[ \t]*(.*)$")
 issues, linked = [], set()
 broken = unresolved = notype = stale = orphan = badyaml = collision = unindexed = 0
+missingfield = deadend = staleptr = chain = 0
 
 content_dirs = tuple(cfg["content_dirs"])
 collision_stop = {s.lower() for s in cfg["collision_exempt"]}
+type_reqs = cfg["type_requirements"]
 names = {}          # normalized title/alias -> (display, [pages claiming it])
 dir_indexes = {}    # content dir -> [its index.md files]
 index_targets = {}  # index file -> set of resolved link targets
+page_targets = {}   # file -> set of resolved existing link targets
+out_md = {}         # file -> count of outgoing wiki (.md) links
+superseded = set()  # pages carrying the supersede token / superseded_by:
 
 
 def content_page(f, b):
@@ -130,9 +138,12 @@ for f in files:
             t = parts[0].split("#")[0]
             if not t or t.startswith(("http://", "https://", "mailto:", "tel:", "ftp:")):
                 continue
+            if t.endswith(".md"):
+                out_md[f] = out_md.get(f, 0) + 1
             tgt = t.lstrip("/") if t.startswith("/") else os.path.normpath(os.path.join(d, t))
             if os.path.exists(tgt):
                 linked.add(tgt)
+                page_targets.setdefault(f, set()).add(tgt)
                 if is_index:
                     index_targets.setdefault(f, set()).add(tgt)
             else:
@@ -141,6 +152,9 @@ for f in files:
     if re.search(r"(?im)^\s*(Status:\s*Unresolved|Contradiction severity:\s*hard)", text):
         issues.append(f"  UNRESOLVED {f}")
         unresolved += 1
+    if (re.search(r"(?im)^\s*Status:\s*Superseded", text)
+            or wikilib.frontmatter_value(text, "superseded_by")):
+        superseded.add(f)
     fmblock = re.match(r"^---\n(.*?)\n---", text, re.S)
     # collect the names (title + aliases) each content page claims, for the collision check
     if fmblock and content_page(f, b):
@@ -153,6 +167,13 @@ for f in files:
             norm = re.sub(r"\s+", " ", name).strip().lower()
             if len(norm) >= 3 and norm not in collision_stop:
                 names.setdefault(norm, (name, []))[1].append(f)
+    # per-type required frontmatter (Wikidata-style constraint: a hint, not a gate)
+    if fmblock and content_page(f, b):
+        tv = re.search(r"^type:\s*(\S+)", fmblock.group(1), re.M)
+        for field in (type_reqs.get(tv.group(1), []) if tv else []):
+            if not re.search(rf"^{re.escape(field)}:\s*\S", fmblock.group(1), re.M):
+                issues.append(f"  MISSING-FIELD {f} (type {tv.group(1)} expects {field}:)")
+                missingfield += 1
     # malformed-YAML frontmatter (checked on every file that has a frontmatter block)
     if fmblock:
         for k in bad_yaml_keys(fmblock.group(1)):
@@ -198,7 +219,28 @@ for cd, idxs in sorted(dir_indexes.items()):
             issues.append(f"  UNINDEXED {f} (not linked from an index.md under {cd})")
             unindexed += 1
 
+# dead end: a content page with zero outgoing wiki links contributes nothing to the
+# graph; a weak-crosslink signal for reflect. Advisory.
+for f in files:
+    if content_page(f, os.path.basename(f)) and f not in superseded and not out_md.get(f):
+        issues.append(f"  DEADEND {f} (no outgoing wiki links)")
+        deadend += 1
+
+# supersede hygiene: live content should link the successor, not the superseded page;
+# and a superseded page's pointer should not target another superseded page. Advisory.
+for f in files:
+    for t in sorted(page_targets.get(f, ())):
+        if t not in superseded:
+            continue
+        if f in superseded:
+            issues.append(f"  CHAIN {f} -> {t} (superseded points at superseded; collapse the chain)")
+            chain += 1
+        elif content_page(f, os.path.basename(f)):
+            issues.append(f"  STALE-POINTER {f} -> {t} (superseded; link the successor)")
+            staleptr += 1
+
 for line in issues:
     print(line)
 print(f"CORE broken={broken} unresolved={unresolved} badyaml={badyaml} notype={notype} "
-      f"stale={stale} orphan={orphan} collision={collision} unindexed={unindexed}")
+      f"stale={stale} orphan={orphan} collision={collision} unindexed={unindexed} "
+      f"missingfield={missingfield} deadend={deadend} staleptr={staleptr} chain={chain}")

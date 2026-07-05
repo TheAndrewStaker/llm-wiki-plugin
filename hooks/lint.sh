@@ -41,11 +41,15 @@ nt=$(printf '%s\n' "$core"   | sed -n 's/.* notype=\([0-9]*\).*/\1/p')
 st=$(printf '%s\n' "$core"   | sed -n 's/.* stale=\([0-9]*\).*/\1/p')
 orp=$(printf '%s\n' "$core"  | sed -n 's/.* orphan=\([0-9]*\).*/\1/p')
 col=$(printf '%s\n' "$core"  | sed -n 's/.* collision=\([0-9]*\).*/\1/p')
-unx=$(printf '%s\n' "$core"  | sed -n 's/.* unindexed=\([0-9]*\)$/\1/p')
+unx=$(printf '%s\n' "$core"  | sed -n 's/.* unindexed=\([0-9]*\).*/\1/p')
+mf=$(printf '%s\n' "$core"   | sed -n 's/.* missingfield=\([0-9]*\).*/\1/p')
+de=$(printf '%s\n' "$core"   | sed -n 's/.* deadend=\([0-9]*\).*/\1/p')
+sp=$(printf '%s\n' "$core"   | sed -n 's/.* staleptr=\([0-9]*\).*/\1/p')
+ch=$(printf '%s\n' "$core"   | sed -n 's/.* chain=\([0-9]*\)$/\1/p')
 islands=$(printf '%s\n' "$graph"  | sed -n 's/^COMPONENTS=[0-9]* ISLAND_NODES=//p')
 ml=$(printf '%s\n' "$missed" | sed -n 's/^MISSED_LINKS=//p')
 
-echo "${C}== summary ==${Z}  broken-links:${b:-?}  unresolved:${u:-?}  bad-yaml:${by:-?}  orphans:${orp:-?}  islands:${islands:-?}  missed-links:${ml:-?}  no-type:${nt:-?}  stale:${st:-?}  collisions:${col:-?}  unindexed:${unx:-?}"
+echo "${C}== summary ==${Z}  broken-links:${b:-?}  unresolved:${u:-?}  bad-yaml:${by:-?}  orphans:${orp:-?}  islands:${islands:-?}  missed-links:${ml:-?}  no-type:${nt:-?}  stale:${st:-?}  collisions:${col:-?}  unindexed:${unx:-?}  missing-fields:${mf:-?}  dead-ends:${de:-?}  stale-pointers:${sp:-?}  chains:${ch:-?}"
 # If the gate counters didn't parse, the CORE line is malformed -> fail closed, don't pass blind.
 if [ -z "$b" ] || [ -z "$u" ] || [ -z "$by" ]; then
   echo "${R}FAIL${Z} (could not read lint-core counts; failing closed)"; exit 2
