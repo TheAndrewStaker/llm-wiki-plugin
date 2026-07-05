@@ -7,6 +7,12 @@
 # interactive and human-gated by design; run those in a session, not in CI.
 # stale-source runs in diff mode over the last week: --standing compares against
 # sources OUTSIDE the repo, which do not exist on a CI runner.
+#
+# External URLs: local tooling is offline on purpose (URLs lint as UNCHECKABLE), and
+# CI is where the network lives. The external-links job below checks them with lychee;
+# it is OFF by default. Opt in by setting the repository variable
+# WIKI_CHECK_EXTERNAL_LINKS=true (Settings > Secrets and variables > Actions).
+# sources/ is excluded: raw staged sources rot legitimately; staging IS the archive.
 # Per your org's policy, consider pinning actions to full commit SHAs.
 name: wiki health
 on:
@@ -53,3 +59,14 @@ jobs:
           else
             gh issue create --title "Wiki health report" --body-file /tmp/report.md
           fi
+  external-links:
+    if: ${{ vars.WIKI_CHECK_EXTERNAL_LINKS == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: lycheeverse/lychee-action@v2
+        with:
+          args: --no-progress --exclude-path sources -- './**/*.md'
+          fail: false
+      - name: Surface the lychee report
+        run: cat lychee/out.md >> "$GITHUB_STEP_SUMMARY"
