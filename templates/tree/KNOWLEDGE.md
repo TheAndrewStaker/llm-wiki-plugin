@@ -51,8 +51,9 @@ This base follows three published conventions and adopts their shared vocabulary
 | **log** | git history (`git log --oneline -- '*.md'`) + `archive/` |
 
 **OKF frontmatter:** `type:` is the one required field; also `title`, `description`, `tags`, `timestamp`
-(the last *meaningful* change). The **source a page was synthesized from** is `synthesized_from:` (watched
-by the freshness check); optional `reviewed:` records the last re-verification.
+(the last *meaningful* change). `resource:` keeps its OKF meaning: the asset a concept *describes* (a
+dataset, a system). The **source a page was synthesized from** is `synthesized_from:` (watched by the
+freshness check); optional `reviewed:` records the last re-verification.
 
 ## Operations — Ingest · Query · Lint
 **Ingest** (drop a source → process it): 1. Read the source from `sources/` (immutable). 2. Discuss

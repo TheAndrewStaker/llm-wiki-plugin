@@ -1,0 +1,55 @@
+# Optional CI for a wiki hosted on GitHub: run the deterministic health stack on a
+# schedule and keep the result in one recurring issue. Copy this file into the WIKI
+# repo as .github/workflows/wiki-health.yml. It uses the wiki's OWN hooks/ copies
+# (wiki-setup installs them), so no plugin is needed in CI.
+#
+# This is the deterministic half only. The judgment passes (reflect, audit) stay
+# interactive and human-gated by design; run those in a session, not in CI.
+# stale-source runs in diff mode over the last week: --standing compares against
+# sources OUTSIDE the repo, which do not exist on a CI runner.
+# Per your org's policy, consider pinning actions to full commit SHAs.
+name: wiki health
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+  workflow_dispatch: {}
+permissions:
+  contents: read
+  issues: write
+concurrency:
+  group: wiki-health
+  cancel-in-progress: true
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # stale-source diffs across history
+      - name: Run the deterministic health stack
+        run: |
+          {
+            echo "## Wiki health ($(date -u +%F))"
+            echo
+            echo '```'
+            bash hooks/lint.sh "$PWD" || true
+            base=$(git rev-list -1 --before='7 days ago' HEAD || true)
+            if [ -n "$base" ]; then
+              python3 hooks/stale-source.py --range "$base..HEAD" "$PWD" || true
+            fi
+            python3 hooks/reflect-scope.py "$PWD" || true
+            echo '```'
+            echo
+            echo "_Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}_"
+          } > /tmp/report.md
+      - name: Create or update the recurring issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          n=$(gh issue list --state open --search 'in:title "Wiki health report"' \
+                --json number --jq '.[0].number' 2>/dev/null || true)
+          if [ -n "$n" ] && [ "$n" != "null" ]; then
+            gh issue edit "$n" --body-file /tmp/report.md
+          else
+            gh issue create --title "Wiki health report" --body-file /tmp/report.md
+          fi
