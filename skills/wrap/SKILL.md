@@ -1,6 +1,12 @@
 ---
-description: End-of-session wrap-up — synthesize this session's durable findings into the wiki, file decisions, update STATE if focus changed, lint, and commit.
+name: wrap
+description: >-
+  End-of-session wrap-up — synthesize this session's durable findings into the wiki, file
+  decisions, update STATE if focus changed, lint, and commit. Use when the user says /wrap,
+  asks to wrap up the session, or wants findings filed before ending.
 ---
+
+# Wrap: file the session's durable findings
 
 Conclude this session by filing its **durable** findings into the wiki, then commit. (Routine capture is
 already auto-committed each turn by the plugin's Stop hook; this is the synthesis a hook cannot do.) Resolve
