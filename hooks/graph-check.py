@@ -3,7 +3,10 @@
 
 Parses BOTH relative-markdown links `](path)` and Obsidian `[[wikilinks]]` over the
 git-tracked .md files, computes connected components, and prints any ISLAND (a node not
-in the largest component). Advisory: always exits 0. Standalone:
+in the largest component). Fenced code blocks and inline code spans are stripped first
+(mirrors lint-core.py's hardening) so a page merely documenting link syntax, including a
+whitespace-only target like `[x](  )`, is never parsed as a real link or crash the pass.
+Advisory: always exits 0. Standalone:
     python3 hooks/graph-check.py [WIKI_ROOT]
 Output ends with a machine line:
     COMPONENTS=<n> ISLAND_NODES=<m>
@@ -27,24 +30,36 @@ for f in files:
 adj = collections.defaultdict(set)
 mdlink = re.compile(r"\]\(([^)]+)\)")
 wiki = re.compile(r"\[\[([^\]|#]+)")
+fence = re.compile(r"^\s*(```|~~~)")
 for f in files:
     try:
         txt = open(f, encoding="utf-8", errors="replace").read()
     except OSError:
         continue
     d = os.path.dirname(f)
-    for m in mdlink.finditer(txt):
-        t = m.group(1).split()[0].split("#")[0]
-        if not t or t.startswith(("http", "mailto", "tel", "ftp")):
+    in_fence = False
+    for line in txt.split("\n"):
+        if fence.match(line):
+            in_fence = not in_fence
             continue
-        tgt = t.lstrip("/") if t.startswith("/") else os.path.normpath(os.path.join(d, t))
-        if tgt in nodes:
-            adj[f].add(tgt)
-            adj[tgt].add(f)
-    for m in wiki.finditer(txt):
-        for tgt in by_base.get(m.group(1).strip(), []):
-            adj[f].add(tgt)
-            adj[tgt].add(f)
+        if in_fence:
+            continue
+        stripped = re.sub(r"`[^`]*`", "", line)
+        for m in mdlink.finditer(stripped):
+            parts = m.group(1).split()
+            if not parts:  # whitespace-only target like [x](  ) -> not a link
+                continue
+            t = parts[0].split("#")[0]
+            if not t or t.startswith(("http", "mailto", "tel", "ftp")):
+                continue
+            tgt = t.lstrip("/") if t.startswith("/") else os.path.normpath(os.path.join(d, t))
+            if tgt in nodes:
+                adj[f].add(tgt)
+                adj[tgt].add(f)
+        for m in wiki.finditer(stripped):
+            for tgt in by_base.get(m.group(1).strip(), []):
+                adj[f].add(tgt)
+                adj[tgt].add(f)
 
 seen, comps = set(), []
 for f in files:

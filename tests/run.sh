@@ -136,6 +136,19 @@ bash "$H/lint.sh" "$W" >/dev/null 2>&1; rc2=$?
 assert "non-utf8 page does not crash the gate open" "yes" "$([ "$rc2" -ne 0 ] && echo yes || echo no)"
 git -C "$W" rm -qf notes/crashy.md notes/binbyte.md >/dev/null 2>&1
 
+echo "--- graph-check.py does not crash on a backticked whitespace-only link target ---"
+# graph-check.py did NOT strip inline code / fenced blocks like lint-core.py, so a page merely
+# documenting the bad-link syntax inside backticks still hit `.split()[0]` on a whitespace-only
+# target and raised IndexError, which made lint.sh's summary print "islands:?".
+printf -- '---\ntype: notes\ntitle: syntax doc\n---\nBad-link example: `[x](  )`. See [alpha](../entities/alpha.md).\n' > "$W/notes/syntaxdoc.md"
+git -C "$W" add -A >/dev/null 2>&1
+graph=$(python3 "$H/graph-check.py" "$W" 2>&1); rc=$?
+assert "graph-check.py does not crash (exit 0)" "0" "$rc"
+assert_contains "graph-check.py still reports COMPONENTS" "COMPONENTS=" "$graph"
+lint_out=$(bash "$H/lint.sh" "$W" 2>&1)
+assert "lint.sh summary no longer shows islands:?" "0" "$(printf '%s\n' "$lint_out" | grep -c 'islands:?')"
+git -C "$W" rm -qf notes/syntaxdoc.md >/dev/null 2>&1
+
 echo "--- reflect-scope caps + runs ---"
 scope=$(python3 "$H/reflect-scope.py" "$W")
 assert_contains "reflect-scope emits a count" "SCOPE_COUNT=" "$scope"
