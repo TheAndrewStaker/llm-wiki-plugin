@@ -50,6 +50,15 @@ DEFAULTS = {
     "stale_days": 120,
     # a wiki with fewer than this many content pages is "young" (capture, don't query)
     "young_wiki_pages": 20,
+    # Inbox soft-cap advisory (STATE.md's `## Inbox` section): 0 disables each check.
+    "inbox_soft_max_items": 0,
+    "inbox_soft_max_words": 0,
+    # timestamp-drift advisory: flag a page whose last real git edit is more than this
+    # many days newer than its declared reviewed:/timestamp:. 0 disables the check.
+    "timestamp_drift_days": 0,
+    # commit subjects matching this (case-insensitive) regex are ignored when computing
+    # a page's last-edit date for the drift check (routine autosave commits aren't edits).
+    "drift_exempt_commit_pattern": "session auto-save",
 }
 
 

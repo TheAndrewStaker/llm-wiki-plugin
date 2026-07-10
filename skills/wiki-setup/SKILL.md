@@ -38,7 +38,8 @@ sessions from re-deriving where facts belong.
 
 ## Step 4 — Install the wiki's own lint scripts
 Copy `${CLAUDE_PLUGIN_ROOT}/hooks/`{lint.sh, lint-core.py, graph-check.py, missed-links.py, stale-source.py,
-reflect-scope.py, rewrite-links.py, wanted-pages.py, wikilib.py, pre-commit} into `<wiki>/hooks/`. This makes the wiki self-contained — a bare
+reflect-scope.py, rewrite-links.py, wanted-pages.py, inbox-check.py, timestamp-drift.py, wikilib.py,
+pre-commit} into `<wiki>/hooks/`. This makes the wiki self-contained — a bare
 clone lints without the plugin. These copies are STATIC: after a plugin update, re-run wiki-setup to refresh
 them (there is no automatic re-sync yet — that is a planned enhancement, not current behavior).
 

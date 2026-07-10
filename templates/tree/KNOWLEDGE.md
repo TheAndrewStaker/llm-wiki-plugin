@@ -76,8 +76,12 @@ links to the pages used); **file good answers back as pages** so explorations co
 commit-gate tokens, stale dates, title/alias collisions (two pages claiming one name), pages missing
 from their dir's `index.md`, per-type required frontmatter (`type_requirements` in `wiki.config.json`),
 dead-end pages (no outgoing wiki links), and supersede hygiene (live links to superseded pages; superseded
-chains). The judgment pass (contradictions, stale-superseded claims, missing pages, weak links) is the
-`reflect` skill — it proposes; you dispose.
+chains). Two more advisories are opt-in (disabled by default, both 0, in `wiki.config.json`): an Inbox
+soft-cap (`hooks/inbox-check.py`, flags STATE.md's `## Inbox` growing past a configured item/word count)
+and timestamp-drift (`hooks/timestamp-drift.py`, flags a page whose last real git edit is newer than its
+declared `reviewed:`/`timestamp:` by more than a configured number of days). The judgment pass
+(contradictions, stale-superseded claims, missing pages, weak links) is the `reflect` skill — it proposes;
+you dispose.
 
 ## Staleness policy (no calendar sweeps)
 - **Structural** (broken links, orphans, missing `type`) — deterministic, caught continuously by lint.

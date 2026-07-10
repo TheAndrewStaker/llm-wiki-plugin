@@ -340,6 +340,81 @@ assert_contains "alias-vs-title collision flagged" 'COLLISION "Gizmo Framework"'
 assert "fenced supersede example is not a superseded page" "0" "$(printf '%s\n' "$core" | grep -c 'STALE-POINTER notes/docsup-linker.md')"
 git -C "$W" rm -qf concepts/gizmo.md concepts/gizmo2.md notes/gizmo-note.md notes/docsup.md notes/docsup-linker.md >/dev/null 2>&1
 
+echo "--- inbox soft-cap advisory (disabled by default) ---"
+inbox=$(python3 "$H/inbox-check.py" "$W")
+assert "inbox check disabled by default (no config)" "INBOX=-" "$inbox"
+
+echo "--- inbox soft-cap advisory: under cap is OK ---"
+cat >> "$W/STATE.md" <<'EOF'
+
+## Inbox
+- [2026-01-01 · test] first item
+- [2026-01-01 · test] second item
+EOF
+echo '{"inbox_soft_max_items": 5, "inbox_soft_max_words": 200}' > "$W/wiki.config.json"
+inbox=$(python3 "$H/inbox-check.py" "$W")
+assert "inbox under both caps is OK" "INBOX=OK" "$inbox"
+
+echo "--- inbox soft-cap advisory: over the item cap is OVER ---"
+echo '{"inbox_soft_max_items": 1, "inbox_soft_max_words": 200}' > "$W/wiki.config.json"
+inbox=$(python3 "$H/inbox-check.py" "$W")
+assert_contains "inbox over item cap flagged OVER" "INBOX=OVER" "$inbox"
+assert_contains "inbox advisory line names STATE.md" "INBOX-OVER STATE.md" "$inbox"
+bash "$H/lint.sh" "$W" >/dev/null 2>&1; rc=$?
+assert "inbox soft-cap stays advisory (gate passes)" "0" "$rc"
+
+echo "--- inbox soft-cap advisory: over the word cap alone is also OVER ---"
+echo '{"inbox_soft_max_items": 50, "inbox_soft_max_words": 3}' > "$W/wiki.config.json"
+inbox=$(python3 "$H/inbox-check.py" "$W")
+assert_contains "inbox over word cap flagged OVER" "INBOX=OVER" "$inbox"
+rm "$W/wiki.config.json"
+git -C "$W" checkout -q -- STATE.md   # restore the fixture STATE.md (no Inbox section)
+
+echo "--- timestamp-drift advisory (disabled by default) ---"
+cat > "$W/notes/drifted.md" <<'EOF'
+---
+type: notes
+title: Drifted page
+timestamp: 2020-01-01
+synthesized_from: ../sources/beta-src.md
+---
+Links [alpha](../entities/alpha.md) so it is not a dead end.
+EOF
+git -C "$W" add -A >/dev/null 2>&1
+GIT_AUTHOR_DATE="2026-06-01 12:00:00 +0000" GIT_COMMITTER_DATE="2026-06-01 12:00:00 +0000" \
+  git -C "$W" -c user.name=t -c user.email=t@t commit -qm "add drifted page" >/dev/null 2>&1
+drift=$(python3 "$H/timestamp-drift.py" "$W")
+assert "timestamp-drift disabled by default" "DRIFT=0" "$drift"
+
+echo "--- timestamp-drift advisory: a drifted page is flagged when enabled ---"
+echo '{"timestamp_drift_days": 7}' > "$W/wiki.config.json"
+drift=$(python3 "$H/timestamp-drift.py" "$W")
+assert_contains "drifted page flagged" "DRIFT notes/drifted.md" "$drift"
+bash "$H/lint.sh" "$W" >/dev/null 2>&1; rc=$?
+assert "timestamp-drift stays advisory (gate passes)" "0" "$rc"
+
+echo "--- timestamp-drift advisory: exempt-only commits after baseline are ignored ---"
+cat > "$W/notes/exempt-example.md" <<'EOF'
+---
+type: notes
+title: Exempt example page
+timestamp: 2026-01-05
+synthesized_from: ../sources/beta-src.md
+---
+Links [alpha](../entities/alpha.md) so it is not a dead end.
+EOF
+git -C "$W" add -A >/dev/null 2>&1
+GIT_AUTHOR_DATE="2026-01-05 12:00:00 +0000" GIT_COMMITTER_DATE="2026-01-05 12:00:00 +0000" \
+  git -C "$W" -c user.name=t -c user.email=t@t commit -qm "add exempt example page" >/dev/null 2>&1
+echo "trailing autosave edit" >> "$W/notes/exempt-example.md"
+git -C "$W" add -A >/dev/null 2>&1
+GIT_AUTHOR_DATE="2026-07-01 12:00:00 +0000" GIT_COMMITTER_DATE="2026-07-01 12:00:00 +0000" \
+  git -C "$W" -c user.name=t -c user.email=t@t commit -qm "session auto-save: bump" >/dev/null 2>&1
+drift=$(python3 "$H/timestamp-drift.py" "$W")
+assert "exempt-only-edited page is not flagged" "0" "$(printf '%s\n' "$drift" | grep -c 'DRIFT notes/exempt-example.md')"
+rm "$W/wiki.config.json"
+git -C "$W" rm -qf notes/drifted.md notes/exempt-example.md >/dev/null 2>&1
+
 echo "--- template scaffold lints clean + pre-commit gate blocks ---"
 # wiki-setup's deterministic core: templates/tree + the wiki's own hook copies must yield a
 # lint-green wiki whose pre-commit rejects a broken link and passes a clean commit.
@@ -348,7 +423,7 @@ mkdir -p "$T"
 cp -R "$ROOT/templates/tree/." "$T/"
 mv "$T/gitignore" "$T/.gitignore"
 mkdir -p "$T/hooks"
-for f in lint.sh lint-core.py graph-check.py missed-links.py stale-source.py reflect-scope.py rewrite-links.py wanted-pages.py wikilib.py pre-commit; do
+for f in lint.sh lint-core.py graph-check.py missed-links.py stale-source.py reflect-scope.py rewrite-links.py wanted-pages.py inbox-check.py timestamp-drift.py wikilib.py pre-commit; do
   cp "$ROOT/hooks/$f" "$T/hooks/"
 done
 git -C "$T" init -q
@@ -367,6 +442,32 @@ rm -rf "$(dirname "$T")"
 echo "--- org-residue scan (scanner ships; terms live in a gitignored denylist) ---"
 bash "$ROOT/scripts/check-no-org.sh" >/dev/null 2>&1; rc=$?
 assert "org-residue scan passes on tracked repo" "0" "$rc"
+
+echo "--- session-status.sh: a stalled pull is bounded, not a session-start hang ---"
+# A stalled remote must not hang session start. Fake `git` on PATH so the `pull` subcommand
+# sleeps far past the timeout while every other git call passes through untouched, then confirm
+# session-status.sh still returns promptly and warns instead of blocking.
+FAKEBIN="$(mktemp -d)"
+REAL_GIT="$(command -v git)"
+cat > "$FAKEBIN/git" <<EOF
+#!/usr/bin/env bash
+for a in "\$@"; do
+  if [ "\$a" = "pull" ]; then sleep 10; exit 0; fi
+done
+exec "$REAL_GIT" "\$@"
+EOF
+chmod +x "$FAKEBIN/git"
+br=$(git -C "$W" rev-parse --abbrev-ref HEAD)
+git -C "$W" remote add origin file:///nonexistent-origin-for-test >/dev/null 2>&1
+git -C "$W" update-ref "refs/remotes/origin/$br" "$(git -C "$W" rev-parse HEAD)" >/dev/null 2>&1
+git -C "$W" branch --set-upstream-to="origin/$br" "$br" >/dev/null 2>&1
+start=$(date +%s)
+out=$(WIKI_ROOT="$W" WIKI_PULL_TIMEOUT=2 PATH="$FAKEBIN:$PATH" bash "$H/session-status.sh" 2>&1)
+elapsed=$(( $(date +%s) - start ))
+assert "session-status returns well before the stalled pull would finish" "yes" "$([ "$elapsed" -le 8 ] && echo yes || echo no)"
+assert_contains "session-status warns about the stalled pull" "exceeded" "$out"
+git -C "$W" remote remove origin >/dev/null 2>&1
+rm -rf "$FAKEBIN"
 
 echo
 echo "======================================"

@@ -21,5 +21,11 @@
   },
   "stale_days": 120,
   "young_wiki_pages": 20,
-  "session_read_budget_words": 20000
+  "session_read_budget_words": 20000,
+  "_comment_inbox": "Both 0 (disabled) by default. Set either to a positive number to get a soft-cap advisory (never blocks) when STATE.md's ## Inbox section grows past it.",
+  "inbox_soft_max_items": 0,
+  "inbox_soft_max_words": 0,
+  "_comment_drift": "0 (disabled) by default. Set to a day count to flag a page whose last real git edit is newer than its reviewed:/timestamp: by more than that many days.",
+  "timestamp_drift_days": 0,
+  "drift_exempt_commit_pattern": "session auto-save"
 }

@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # SessionStart hook: inject the wiki's current focus + health into the session context.
 # Read-only and fast. Silent until the wiki is initialized (no nagging before wiki-setup runs).
-#   - pulls (rebase, autostash) if an upstream is configured, so a second machine starts current
+#   - pulls (rebase, autostash) if an upstream is configured, bounded so a stalled remote
+#     can't hang session start, so a second machine starts current
 #   - injects STATE.md's Focus section (the handoff)
-#   - surfaces wiki-health problems (failed auto-commit/push, missing lint gate)
+#   - surfaces wiki-health problems (failed auto-commit/push, missing lint gate, an
+#     over-cap Inbox)
 #   - young-wiki hint (capture, don't query) + STATE freshness nudge (protect the loop)
 #   - sources org/personal drop-ins from $KB/status.d/*.sh (extension point)
 set -uo pipefail
@@ -16,12 +18,31 @@ KB="${KB/#\~/$HOME}"
 
 ctx=""
 warn=""
+H="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# 0. Sync down first (never blocks; only if origin + upstream exist and tree is clean-enough).
+# 0. Sync down first, BOUNDED: never let a stalled remote block session start. Only
+#    attempted when origin + an upstream are configured. macOS ships no GNU `timeout`, so
+#    this backgrounds the pull and polls briefly instead: past PULL_TIMEOUT seconds it
+#    stops waiting (the pull keeps running detached; it lands on its own, or the next
+#    session's pull retries). Override the wait via $WIKI_PULL_TIMEOUT (tests only).
 if git -C "$KB" remote get-url origin >/dev/null 2>&1 \
    && git -C "$KB" rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
-  git -C "$KB" pull --rebase --autostash -q >/dev/null 2>&1 \
-    || warn="wiki pull --rebase failed (diverged?) -- resolve in $KB before it drifts"
+  PULL_TIMEOUT="${WIKI_PULL_TIMEOUT:-5}"
+  ( git -C "$KB" pull --rebase --autostash -q >/dev/null 2>&1 ) &
+  pull_pid=$!
+  waited=0
+  while [ "$waited" -lt "$PULL_TIMEOUT" ] && kill -0 "$pull_pid" 2>/dev/null; do
+    sleep 1
+    waited=$((waited + 1))
+  done
+  if kill -0 "$pull_pid" 2>/dev/null; then
+    warn="wiki pull --rebase exceeded ${PULL_TIMEOUT}s (slow/stalled remote) -- skipped for this session; it keeps running in the background"
+    disown "$pull_pid" 2>/dev/null || true
+  else
+    wait "$pull_pid"
+    pull_rc=$?
+    [ "$pull_rc" -ne 0 ] && warn="wiki pull --rebase failed (diverged?) -- resolve in $KB before it drifts"
+  fi
 fi
 
 # 1. Health: a failed auto-commit/push or a missing lint gate must not stay silent.
@@ -36,6 +57,12 @@ fi
 CLAUDE_MD="$HOME/.claude/CLAUDE.md"
 if [ -f "$CLAUDE_MD" ] && ! grep -qiE "KNOWLEDGE\.md|wiki-query|$KB" "$CLAUDE_MD" 2>/dev/null; then
   warn="${warn:+$warn | }wiki exists but ~/.claude/CLAUDE.md doesn't reference it -- run the wiki-setup skill to add the contract stanza, or sessions won't consult the wiki"
+fi
+# Inbox soft-cap: one-line nudge if STATE.md's ## Inbox has grown past its configured soft
+# cap (disabled by default; wiki.config.json inbox_soft_max_items / inbox_soft_max_words).
+if command -v python3 >/dev/null 2>&1; then
+  inbox_over=$(python3 "$H/inbox-check.py" "$KB" 2>/dev/null | sed -n 's/^  INBOX-OVER STATE.md (\(.*\))$/\1/p')
+  [ -n "$inbox_over" ] && warn="${warn:+$warn | }wiki STATE.md Inbox is over its soft cap ($inbox_over) -- triage into Focus/Up next/ROADMAP/initiatives"
 fi
 
 # 2. Current focus from STATE.md (the handoff; absence is normal).
@@ -53,7 +80,6 @@ fi
 # 3. Young-wiki hint: below the configured threshold, bias toward capture over query.
 #    content_dirs + young_wiki_pages come from wiki.config.json (via wikilib defaults), not hardcoded.
 if command -v python3 >/dev/null 2>&1; then
-  H="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   read -r threshold globs < <(python3 - "$H" "$KB" <<'PY'
 import sys, os
 sys.path.insert(0, sys.argv[1])

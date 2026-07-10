@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Deterministic knowledge-base lint (fast, single-pass Python). Pre-commit-gated + run on demand.
 # Hard-fails on broken links or unresolved commit-gate tokens; orphans / islands / missed-links /
-# no-type / stale / collisions / unindexed are advisory. Source-freshness (stale-source.py) is a
-# separate triggered tool.
+# no-type / stale / collisions / unindexed / inbox soft-cap / timestamp-drift are advisory.
+# Source-freshness (stale-source.py) is a separate triggered tool.
 set -uo pipefail
 
 KB="${1:-${CLAUDE_PLUGIN_OPTION_WIKI_ROOT:-${WIKI_ROOT:-$HOME/wiki}}}"
@@ -23,6 +23,8 @@ core_rc=$?
 graph=$(python3 "$H/graph-check.py" "$KB" 2>/dev/null || true)
 missed=$(python3 "$H/missed-links.py" "$KB" 2>/dev/null || true)
 wanted=$(python3 "$H/wanted-pages.py" "$KB" 2>/dev/null || true)
+inbox=$(python3 "$H/inbox-check.py" "$KB" 2>/dev/null || true)
+drift=$(python3 "$H/timestamp-drift.py" "$KB" 2>/dev/null || true)
 
 echo "${C}== knowledge-base lint ==${Z}"
 if [ "$core_rc" -ne 0 ]; then
@@ -35,6 +37,8 @@ printf '%s\n' "$core"   | grep -vE '^CORE ' || true
 printf '%s\n' "$graph"  | grep '^  ISLAND' || true
 printf '%s\n' "$missed" | grep '^  MISSED-LINK' || true
 printf '%s\n' "$wanted" | grep '^  WANTED' || true
+printf '%s\n' "$inbox"  | grep '^  INBOX-OVER' || true
+printf '%s\n' "$drift"  | grep '^  DRIFT' || true
 
 b=$(printf '%s\n'  "$core"   | sed -n 's/^CORE broken=\([0-9]*\).*/\1/p')
 u=$(printf '%s\n'  "$core"   | sed -n 's/^CORE [^ ]* unresolved=\([0-9]*\).*/\1/p')
@@ -51,8 +55,10 @@ ch=$(printf '%s\n' "$core"   | sed -n 's/.* chain=\([0-9]*\)$/\1/p')
 islands=$(printf '%s\n' "$graph"  | sed -n 's/^COMPONENTS=[0-9]* ISLAND_NODES=//p')
 ml=$(printf '%s\n' "$missed" | sed -n 's/^MISSED_LINKS=//p')
 wp=$(printf '%s\n' "$wanted" | sed -n 's/^WANTED=\([0-9]*\).*/\1/p')
+ib=$(printf '%s\n' "$inbox"  | sed -n 's/^INBOX=//p')
+dr=$(printf '%s\n' "$drift"  | sed -n 's/^DRIFT=\([0-9]*\).*/\1/p')
 
-echo "${C}== summary ==${Z}  broken-links:${b:-?}  unresolved:${u:-?}  bad-yaml:${by:-?}  orphans:${orp:-?}  islands:${islands:-?}  missed-links:${ml:-?}  no-type:${nt:-?}  stale:${st:-?}  collisions:${col:-?}  unindexed:${unx:-?}  missing-fields:${mf:-?}  dead-ends:${de:-?}  stale-pointers:${sp:-?}  chains:${ch:-?}  wanted:${wp:-?}"
+echo "${C}== summary ==${Z}  broken-links:${b:-?}  unresolved:${u:-?}  bad-yaml:${by:-?}  orphans:${orp:-?}  islands:${islands:-?}  missed-links:${ml:-?}  no-type:${nt:-?}  stale:${st:-?}  collisions:${col:-?}  unindexed:${unx:-?}  missing-fields:${mf:-?}  dead-ends:${de:-?}  stale-pointers:${sp:-?}  chains:${ch:-?}  wanted:${wp:-?}  inbox:${ib:-?}  drift:${dr:-?}"
 # If the gate counters didn't parse, the CORE line is malformed -> fail closed, don't pass blind.
 if [ -z "$b" ] || [ -z "$u" ] || [ -z "$by" ]; then
   echo "${R}FAIL${Z} (could not read lint-core counts; failing closed)"; exit 2
