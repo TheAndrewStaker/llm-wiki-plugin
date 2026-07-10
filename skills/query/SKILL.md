@@ -29,7 +29,8 @@ and to *grow* it, so the next query is cheaper. Resolve the wiki root from
    traceable and the user can correct the source, not just the answer.
 5. **File it back.** If the answer is a genuine synthesis (not already a page), write it as an `analyses/`
    page (or fold it into the right entity/concept page), with `synthesized_from:` if there was a source,
-   cross-linked. Add an index row, run `bash "$WIKI_ROOT/hooks/lint.sh"`, commit. This is the compounding
+   cross-linked. Folding into an existing page is a meaningful edit — bump that page's `timestamp:` to
+   today (cosmetic edits bump nothing; `reviewed:` = re-verification only). Add an index row, run `bash "$WIKI_ROOT/hooks/lint.sh"`, commit. This is the compounding
    move — the cheapest big win in the whole system. Respect the wiki's declared knowledge topology
    (KNOWLEDGE.md "Local configuration"): an answer whose audience is a team belongs in the team's own home,
    with a pointer page here.

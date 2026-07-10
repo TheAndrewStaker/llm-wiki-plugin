@@ -41,6 +41,9 @@ Resolve the wiki root from `$CLAUDE_PLUGIN_OPTION_WIKI_ROOT` / `$WIKI_ROOT` / `~
 ## Step 4 — Follow the rest of the contract (KNOWLEDGE.md steps 3–7)
 Write/update the synthesis page in the right type-dir; update the index; update the entity/concept pages it
 touches; extract any decisions (decision routing in `KNOWLEDGE.md`); cross-link with relative markdown links.
+A **meaningful edit to an existing page** (content, not a link/typo/formatting fix) bumps that page's
+`timestamp:` to today; cosmetic edits bump nothing, and `reviewed:` stays reserved for re-verification
+without change.
 If the wiki's declared knowledge topology (KNOWLEDGE.md "Local configuration") routes team-audience material
 to a team home, file it there and keep the pointer + your view here.
 

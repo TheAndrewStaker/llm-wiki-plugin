@@ -23,6 +23,8 @@ the wiki root from `$CLAUDE_PLUGIN_OPTION_WIKI_ROOT` / `$WIKI_ROOT` / `~/wiki`.
    - decisions → `decisions/<name>.md`; open asks you owe someone → `open-asks/<who>.md`.
    - if the current focus changed, update `STATE.md` (append to `## Inbox`; don't reorder `Focus`/`Up next`).
    - link, don't duplicate.
+   - a meaningful edit to an existing page bumps its `timestamp:` to today (cosmetic link/typo edits bump
+     nothing; `reviewed:` = re-verification without change).
 3. Run `bash "$WIKI_ROOT/hooks/lint.sh"`; fix any broken links or unresolved tokens.
 4. Commit the wiki changes.
 5. Report a 2-line summary of what was filed. It is now safe to end the session.
