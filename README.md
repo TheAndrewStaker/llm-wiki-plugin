@@ -69,7 +69,7 @@ exist: repo docs are already in front of any agent working in that repo.
 
 ## Status
 
-The core loop (setup → migrate → ingest/query/reflect/wrap, lint gate, auto-commit, session injection) is implemented and dogfooded daily against the maintainer's live wiki. Remaining work before publishing is packaging, not functionality — see "Publish-gate TODOs" in `CLAUDE.md`.
+The core loop (setup → migrate → ingest/query/reflect/wrap, lint gate, auto-commit, session injection) is implemented and dogfooded. This is still a pre-release project: complete [the public release checklist](docs/release-checklist.md) before publishing or treating compatibility as stable.
 
 ## Verifying a checkout
 
@@ -80,4 +80,5 @@ claude plugin validate .    # manifest check
 
 ## License
 
-Apache-2.0 (see `LICENSE`).
+Apache-2.0 (see `LICENSE` and `NOTICE`). Contributions and security reporting are documented in
+`CONTRIBUTING.md` and `SECURITY.md`.

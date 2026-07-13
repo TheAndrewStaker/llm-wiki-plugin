@@ -1,0 +1,11 @@
+llm-wiki-plugin
+Copyright 2026 Andrew Staker
+
+This project implements and extends ideas described in Andrej Karpathy's “LLM Wiki” pattern:
+https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f
+
+Its interchange support targets Google Cloud's Open Knowledge Format (OKF) v0.1:
+https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md
+
+Those works are acknowledged as conceptual lineage and specifications. Their names do not imply
+endorsement. This distribution does not bundle their source code.
