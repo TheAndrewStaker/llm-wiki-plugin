@@ -467,12 +467,16 @@ EOF
 chmod +x "$MEDIA_TMP/bin/ffmpeg" "$MEDIA_TMP/bin/mlx_whisper"
 TRANSCRIBE_ARGS="$MEDIA_TMP/args" PATH="$MEDIA_TMP/bin:$PATH" \
   WIKI_TRANSCRIPTION_MODEL=/models/test WIKI_TRANSCRIPTION_LANGUAGE=en \
+  WIKI_TRANSCRIPTION_ORIGIN=https://example.com/recordings/42 \
   bash "$ROOT/skills/meeting-notes/scripts/transcribe-media.sh" \
   "$MEDIA_TMP/meeting.mp4" "$MEDIA_TMP/out" >/dev/null
 assert_contains "transcriber receives configured model" "/models/test" "$(cat "$MEDIA_TMP/args")"
 assert_contains "transcriber requests word timestamps" "--word-timestamps" "$(cat "$MEDIA_TMP/args")"
 assert "transcriber emits wiki-ready VTT" "yes" "$([ -s "$MEDIA_TMP/out/meeting.vtt" ] && echo yes || echo no)"
 assert "transcriber emits timestamp JSON" "yes" "$([ -s "$MEDIA_TMP/out/meeting.json" ] && echo yes || echo no)"
+assert_contains "transcriber stamps source-media provenance" "source-media: meeting.mp4" "$(cat "$MEDIA_TMP/out/meeting.vtt")"
+assert_contains "transcriber stamps source-path provenance" "source-path: $MEDIA_TMP/meeting.mp4" "$(cat "$MEDIA_TMP/out/meeting.vtt")"
+assert_contains "transcriber stamps source-origin when given" "source-origin: https://example.com/recordings/42" "$(cat "$MEDIA_TMP/out/meeting.vtt")"
 rm -rf "$MEDIA_TMP"
 
 echo "--- session-status.sh: a stalled pull is bounded, not a session-start hang ---"

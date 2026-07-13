@@ -41,10 +41,14 @@ speaker attribution. For audio/video without a transcript, run the bundled deter
 bash "${CLAUDE_PLUGIN_ROOT}/skills/meeting-notes/scripts/transcribe-media.sh" \
   "/path/to/recording.mp4"
 ```
-It requires `ffmpeg` and `mlx_whisper`, generates TXT/VTT/SRT/TSV/JSON with word timestamps, and prints the
-VTT path to ingest. Honor `WIKI_TRANSCRIPTION_MODEL`, `WIKI_TRANSCRIPTION_LANGUAGE`, and
-`WIKI_TRANSCRIPTION_PROMPT` when the user needs a different model, known language, or vocabulary hint.
-Never infer speaker identity from voice alone; record absent/uncertain attribution as a caveat.
+It requires `ffmpeg` and `mlx_whisper`, generates TXT/VTT/SRT/TSV/JSON with word timestamps, stamps a
+provenance `NOTE` block (original filename + path) into the VTT, and prints the VTT path to ingest. Honor
+`WIKI_TRANSCRIPTION_MODEL`, `WIKI_TRANSCRIPTION_LANGUAGE`, and `WIKI_TRANSCRIPTION_PROMPT` when the user
+needs a different model, known language, or vocabulary hint. When the recording came from a platform (a PR
+attachment, a meeting-platform share link), also pass `WIKI_TRANSCRIPTION_ORIGIN=<canonical URL>` so the
+NOTE records where the durable copy lives — a local download is often renamed or cleaned up, which severs
+the link otherwise. Never infer speaker identity from voice alone; record absent/uncertain attribution as
+a caveat.
 
 ## Step 2 — Canonical name + stage the raw source
 Filename: `YYYY-MM-DD-<person-or-topic>-<slug>.notes.md`, kebab-case (date = the meeting date; default to
@@ -52,6 +56,14 @@ the file's modified date). Multi-part meetings → append `-pt1`/`-pt2` to the t
 ONE umbrella notes page. **Stage the raw text transcript** (copy, don't move) into `sources/YYYY/MM/`.
 For a generated transcript, stage the VTT; keep the original recording and other generated formats outside
 the git-backed wiki unless the user explicitly requests otherwise. Never commit a large recording by default.
+
+**Provenance is required on every staged transcript.** The staged VTT carries a `NOTE` block naming the
+original media file and where its canonical copy lives (`source-media:` / `source-path:` /
+`source-origin:`). The wrapper stamps filename and path automatically; complete the `source-origin:` line
+at staging when you know it (platform or attachment URL, or `local-only`), and give a platform transcript
+that skipped the wrapper the same block by hand. A `local-only` recording worth keeping should outlive its
+inbox: move it into `sources-media/` beside `sources/` (gitignored — add the ignore rule on first use;
+never committed) and point `source-origin:` at that path.
 
 ## Step 3 — Write the enriched page
 OKF frontmatter, then body. Read the full transcript; auto-transcripts mis-hear names/jargon — correct and
@@ -62,6 +74,7 @@ type: notes
 title: <Meeting title> (YYYY-MM-DD)
 timestamp: YYYY-MM-DD
 synthesized_from: ../sources/YYYY/MM/<name>.vtt
+source_media: <canonical recording URL, or its sources-media/ path — omit when there is no recording>
 tags: [meeting, <area>]
 ---
 ```

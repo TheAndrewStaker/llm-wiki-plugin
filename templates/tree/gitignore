@@ -4,6 +4,11 @@
 /.push-failed
 .DS_Store
 
+# Local media archive referenced by transcript provenance NOTEs (meeting-notes skill).
+# Recordings are too large and too raw for git history — keep only their text transcripts
+# in sources/ and point source-origin: here.
+/sources-media/
+
 # Obsidian: keep the link-format config so it survives a fresh clone; ignore workspace caches.
 .obsidian/workspace*.json
 .obsidian/cache
@@ -21,3 +26,5 @@
 #   !/wiki.config.json
 #   !/entities/  (and the other content dirs)
 #   !/hooks/  !/skills/  !/commands/
+# In that layout sources-media/ is already ignored by the /* rule — never add a
+# !/sources-media/ re-include.

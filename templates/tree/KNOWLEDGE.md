@@ -102,6 +102,8 @@ you dispose.
 - [initiatives/](initiatives/index.md), [decisions/](decisions/index.md), [open-asks/](open-asks/index.md) — the work overlay.
 - [archive/](archive/index.md) — completed work, dated, append-only.
 - `sources/` — raw, immutable originals; skills read, never edit.
+- `sources-media/` — gitignored local archive for recordings that have no platform home; transcripts in
+  `sources/` point at their recording (platform URL or this archive) via a provenance `NOTE`.
 - [STATE.md](STATE.md) / [ROADMAP.md](ROADMAP.md) — current focus / long-horizon.
 - `CLAUDE.md` — your working preferences (loaded every session).
 

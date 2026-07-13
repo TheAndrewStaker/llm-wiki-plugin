@@ -66,5 +66,22 @@ for extension in txt vtt srt tsv json; do
 	fi
 done
 
+# Stamp provenance into the VTT (the artifact the wiki stages) so the transcript stays
+# traceable to its recording after the local file is renamed, moved, or cleaned up.
+# WIKI_TRANSCRIPTION_ORIGIN optionally records where the canonical copy lives (URL or
+# archive path); when unset, staging fills in source-origin by hand.
+vtt="$output_dir/$stem.vtt"
+abs_input="$(cd "$(dirname "$input")" && pwd)/$(basename "$input")"
+tmp="$vtt.tmp"
+{
+	head -n 1 "$vtt"
+	printf '\nNOTE\nsource-media: %s\nsource-path: %s\n' "$(basename "$input")" "$abs_input"
+	if [ -n "${WIKI_TRANSCRIPTION_ORIGIN:-}" ]; then
+		printf 'source-origin: %s\n' "$WIKI_TRANSCRIPTION_ORIGIN"
+	fi
+	tail -n +2 "$vtt"
+} > "$tmp"
+mv "$tmp" "$vtt"
+
 printf 'Transcript artifacts: %s\n' "$output_dir"
 printf 'Wiki raw source: %s\n' "$output_dir/$stem.vtt"
