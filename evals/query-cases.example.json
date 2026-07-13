@@ -1,0 +1,13 @@
+[
+  {
+    "id": "canonical-name",
+    "query": "example system",
+    "expected": ["entities/example-system.md"],
+    "types": ["entity"]
+  },
+  {
+    "id": "concept-language",
+    "query": "phrase a user would naturally ask",
+    "expected": ["concepts/example-concept.md"]
+  }
+]

@@ -6,7 +6,7 @@ A compounding, file-based knowledge wiki for AI agents, packaged for Claude Code
 shared skill tree. Markdown + YAML frontmatter, a deterministic lint gate, agentic lexical search, and
 skills for setup / migrate / ingest / query / reflect / wrap.
 
-The model-neutral entry point is `bin/wiki`: `status`, `query`, `health`, `lint`, `stage`, `pointer`, and
+The model-neutral entry point is `bin/wiki`: `status`, `query`, `health`, `eval`, `lint`, `stage`, `pointer`, and
 `okf` expose the deterministic substrate without requiring either agent harness.
 
 ## Lineage
@@ -45,6 +45,7 @@ Concept pages map directly to OKF v0.1: Markdown + YAML frontmatter with `type:`
 - `templates/` — wiki scaffolding: the full type-dir tree with index stubs, `KNOWLEDGE.md` / `STATE.md` / `ROADMAP.md`, `wiki.config.json`, the allowlist `gitignore` (renamed on install), and `CLAUDE.stanza.md` (the contract that makes sessions consult the wiki). Plus `ci/wiki-health.yml`, an optional GitHub Actions workflow that runs the deterministic health stack weekly and keeps the report in one recurring issue (the judgment passes stay interactive by design); it also carries an opt-in lychee job for external-URL rot, since CI is where the network lives (local tooling stays offline and reports URLs as UNCHECKABLE).
 - `skills/` — `wiki-setup`, `wiki-init`, `reflect`, `audit`, `merge-split`, `ingest-source`, `meeting-notes`, `query`, `wrap`. Both harness manifests point at this one open `SKILL.md` tree. Invoke skills explicitly as `$wrap` in Codex; Claude also recognizes the natural-language and `/wrap` conventions described by the skill.
 - `tests/` — self-contained golden-output harness (`bash tests/run.sh`): builds a throwaway fixture wiki with git history and asserts over the lint / query / stale / health stack.
+- `evals/` — labeled retrieval-case format for `wiki eval --cases <file>`; reports Recall@k and MRR and can enforce a minimum recall in CI.
 - `scripts/check-no-org.sh` — org-residue scanner (terms live in a gitignored denylist), run as part of the test suite.
 
 ## Configuration seam

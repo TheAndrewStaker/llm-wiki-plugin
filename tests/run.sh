@@ -540,6 +540,16 @@ assert "configured advisory budget fails lint" "1" "$rc"
 assert_contains "budget failure names exceeded metric" "BUDGET orphan=" "$budget_out"
 rm "$W/wiki.config.json"
 
+echo "--- labeled retrieval evaluation ---"
+EVAL_CASES="$(mktemp)"
+printf '%s\n' '[{"id":"hit","query":"beta concept","expected":["concepts/beta-renamed.md"]},{"id":"miss","query":"term absent everywhere","expected":["concepts/missing.md"]}]' > "$EVAL_CASES"
+eval_out=$("$ROOT/bin/wiki" --root "$W" eval --cases "$EVAL_CASES" --k 5 --min-recall 0.5); rc=$?
+assert "retrieval eval accepts met recall threshold" "0" "$rc"
+assert_contains "retrieval eval reports recall" "recall@5=0.500" "$eval_out"
+"$ROOT/bin/wiki" --root "$W" eval --cases "$EVAL_CASES" --k 5 --min-recall 0.75 >/dev/null; rc=$?
+assert "retrieval eval gates a missed threshold" "1" "$rc"
+rm "$EVAL_CASES"
+
 echo "--- session-status.sh: a stalled pull is bounded, not a session-start hang ---"
 # A stalled remote must not hang session start. Fake `git` on PATH so the `pull` subcommand
 # sleeps far past the timeout while every other git call passes through untouched, then confirm
