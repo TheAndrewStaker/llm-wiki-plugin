@@ -40,8 +40,9 @@ cross-reference graph. **You curate the content; the agent keeps it current and 
 ## Alignment & vocabulary — Karpathy LLM-Wiki · Google OKF · Anthropic
 This base follows three published conventions and adopts their shared vocabulary:
 - **Karpathy, "LLM Wiki"** — the pattern: three layers; Ingest/Query/Lint; index/log; compounding-not-RAG.
-- **Google Cloud, Open Knowledge Format (OKF) v0.1** — the on-disk format: markdown + YAML frontmatter; one
-  required field `type`; concept-id = file path; markdown-link graph.
+- **Google Cloud, Open Knowledge Format (OKF) v0.1** — the interchange format: Markdown concept pages,
+  YAML frontmatter with one required field (`type`), file-path identity, and a Markdown-link graph.
+  The private working tree has additional operational files; `wiki-okf export` creates the clean boundary.
 - **Anthropic context engineering** — filesystem-as-substrate + agentic search first (add semantic
   retrieval only if needed); human-authored schema vs. agent-authored content; progressive disclosure;
   subagents for context isolation.
@@ -55,7 +56,8 @@ This base follows three published conventions and adopts their shared vocabulary
 | **index** | this `KNOWLEDGE.md` + per-dir `index.md`; read FIRST on a query |
 | **log** | git history (`git log --oneline -- '*.md'`) + `archive/` |
 
-**OKF frontmatter:** `type:` is the one required field; also `title`, `description`, `tags`, `timestamp`
+**OKF frontmatter:** Concept pages require `type:`; reserved `index.md` and `log.md` files have no
+frontmatter. Recommended concept fields include `title`, `description`, `tags`, and `timestamp`
 (the last *meaningful* change). `resource:` keeps its OKF meaning: the asset a concept *describes* (a
 dataset, a system). The **source a page was synthesized from** is `synthesized_from:` (watched by the
 freshness check); optional `reviewed:` records the last re-verification.

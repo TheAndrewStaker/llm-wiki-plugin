@@ -40,6 +40,7 @@ be made here, kept generic, and verified before commit.
 ## Publish gate
 
 - Ship the complete Apache-2.0 license and a NOTICE attributing the Karpathy LLM-Wiki gist and Google OKF.
+- Treat the working wiki and its exported OKF bundle as separate trust/privacy boundaries; test both.
 - Run a history-aware secret/PII scan and manually inspect every tracked file for private residue.
 - Rename the repository, manifests, marketplace metadata, and skill prefix to `compendium` in one release.
 - Document security boundaries, contribution rules, compatibility, and migrations.

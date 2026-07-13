@@ -479,6 +479,26 @@ assert_contains "transcriber stamps source-path provenance" "source-path: $MEDIA
 assert_contains "transcriber stamps source-origin when given" "source-origin: https://example.com/recordings/42" "$(cat "$MEDIA_TMP/out/meeting.vtt")"
 rm -rf "$MEDIA_TMP"
 
+echo "--- OKF interchange export and validation ---"
+OKF_TMP="$(mktemp -d)"
+OKF_WIKI="$OKF_TMP/wiki"
+OKF_OUT="$OKF_TMP/export"
+cp -R "$ROOT/templates/tree" "$OKF_WIKI"
+mkdir -p "$OKF_WIKI/sources"
+printf 'private raw source\n' > "$OKF_WIKI/sources/private.md"
+printf '%s\n' '---' 'type: concept' 'title: Exported concept' '---' 'Body.' > "$OKF_WIKI/concepts/exported.md"
+"$ROOT/bin/wiki-okf" export "$OKF_WIKI" "$OKF_OUT" >/dev/null; rc=$?
+assert "OKF export succeeds" "0" "$rc"
+"$ROOT/bin/wiki-okf" validate "$OKF_OUT" >/dev/null; rc=$?
+assert "OKF exported bundle validates" "0" "$rc"
+assert "OKF root index has no frontmatter" "0" "$(head -1 "$OKF_OUT/index.md" | grep -c '^---$')"
+assert "OKF per-dir index has no frontmatter" "0" "$(head -1 "$OKF_OUT/concepts/index.md" | grep -c '^---$')"
+assert "OKF export excludes raw sources" "no" "$([ -e "$OKF_OUT/sources/private.md" ] && echo yes || echo no)"
+printf '%s\n' '---' 'type: index' '---' 'invalid reserved file' > "$OKF_OUT/concepts/index.md"
+"$ROOT/bin/wiki-okf" validate "$OKF_OUT" >/dev/null; rc=$?
+assert "OKF validator rejects reserved frontmatter" "1" "$rc"
+rm -rf "$OKF_TMP"
+
 echo "--- session-status.sh: a stalled pull is bounded, not a session-start hang ---"
 # A stalled remote must not hang session start. Fake `git` on PATH so the `pull` subcommand
 # sleeps far past the timeout while every other git call passes through untouched, then confirm

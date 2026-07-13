@@ -1,0 +1,131 @@
+#!/usr/bin/env python3
+"""Export and structurally validate conservative OKF v0.1 interchange bundles.
+
+The working wiki contains private operational material (sources, agent instructions,
+configuration, and hooks).  An OKF bundle is a deliberately smaller interchange
+surface containing only Markdown concept pages and reserved index.md files.
+"""
+import argparse
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import sys
+
+FRONTMATTER = re.compile(r"\A---\n(.*?)\n---(?:\n|\Z)", re.S)
+TYPE = re.compile(r"(?m)^type:[ \t]*([^\s#][^\n]*)$")
+
+
+def strip_frontmatter(text):
+    return FRONTMATTER.sub("", text, count=1)
+
+
+def validate(root):
+    root = Path(root).resolve()
+    errors = []
+    if not root.is_dir():
+        return [f"not a directory: {root}"]
+    files = sorted(p for p in root.rglob("*") if p.is_file())
+    for path in files:
+        rel = path.relative_to(root).as_posix()
+        if path.suffix.lower() != ".md":
+            errors.append(f"NON_MARKDOWN {rel}")
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeError:
+            errors.append(f"NON_UTF8 {rel}")
+            continue
+        fm = FRONTMATTER.match(text)
+        if path.name in ("index.md", "log.md"):
+            if fm:
+                errors.append(f"RESERVED_FRONTMATTER {rel}")
+        elif not fm:
+            errors.append(f"MISSING_FRONTMATTER {rel}")
+        elif not TYPE.search(fm.group(1)):
+            errors.append(f"MISSING_TYPE {rel}")
+    if not (root / "index.md").is_file():
+        errors.append("MISSING_ROOT_INDEX index.md")
+    return errors
+
+
+def export(source, destination, force=False):
+    source = Path(source).expanduser().resolve()
+    destination = Path(destination).expanduser().resolve()
+    if source == destination or source in destination.parents:
+        raise ValueError("destination must be outside the source wiki")
+    if not (source / "KNOWLEDGE.md").is_file():
+        raise ValueError(f"not a wiki root (missing KNOWLEDGE.md): {source}")
+    if destination.exists() and any(destination.iterdir()):
+        if not force:
+            raise ValueError(f"destination is not empty: {destination}")
+        shutil.rmtree(destination)
+    destination.mkdir(parents=True, exist_ok=True)
+
+    config = {}
+    try:
+        config = json.loads((source / "wiki.config.json").read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        pass
+    content_dirs = config.get("content_dirs", [
+        "entities/", "concepts/", "notes/", "analyses/", "initiatives/",
+        "decisions/", "open-asks/", "reference/",
+    ])
+    if (source / "archive").is_dir() and "archive/" not in content_dirs:
+        content_dirs.append("archive/")
+
+    root_index = strip_frontmatter((source / "KNOWLEDGE.md").read_text(encoding="utf-8"))
+    (destination / "index.md").write_text(root_index.lstrip("\n"), encoding="utf-8")
+
+    copied = 1
+    for dirname in content_dirs:
+        base = (source / dirname).resolve()
+        if source not in base.parents or not base.is_dir():
+            continue
+        for src in sorted(base.rglob("*.md")):
+            rel = src.relative_to(source)
+            dst = destination / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            text = src.read_text(encoding="utf-8")
+            if src.name in ("index.md", "log.md"):
+                text = strip_frontmatter(text).lstrip("\n")
+            dst.write_text(text, encoding="utf-8")
+            copied += 1
+
+    errors = validate(destination)
+    if errors:
+        shutil.rmtree(destination)
+        raise ValueError("export would be invalid:\n  " + "\n  ".join(errors))
+    return copied
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="wiki-okf")
+    sub = parser.add_subparsers(dest="command", required=True)
+    vp = sub.add_parser("validate", help="validate an OKF interchange directory")
+    vp.add_argument("bundle")
+    ep = sub.add_parser("export", help="export a private working wiki as an OKF bundle")
+    ep.add_argument("source")
+    ep.add_argument("destination")
+    ep.add_argument("--force", action="store_true")
+    args = parser.parse_args()
+    try:
+        if args.command == "validate":
+            errors = validate(args.bundle)
+            if errors:
+                for error in errors:
+                    print(error)
+                return 1
+            print("OKF structural validation: OK")
+        else:
+            count = export(args.source, args.destination, args.force)
+            print(f"Exported {count} Markdown files to {Path(args.destination).resolve()}")
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        print(f"wiki-okf: {exc}", file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

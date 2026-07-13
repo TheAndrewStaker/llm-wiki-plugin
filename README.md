@@ -16,7 +16,9 @@ This implements three published conventions and adopts their shared vocabulary:
 
 ### OKF compatibility
 
-A wiki scaffolded here is a valid OKF v0.1 bundle. What maps directly: markdown + YAML frontmatter with `type:` as the only required field; `title` / `description` / `tags` / `timestamp` carry OKF's recommended semantics; per-dir `index.md` files; the relative markdown-link graph. `resource:` is honored with its OKF meaning (the asset a concept *describes*) and is deliberately distinct from this plugin's extensions: `synthesized_from:` (the source a page was written FROM, watched by the freshness tooling), `reviewed:`, `aliases:`, and the work-overlay types. OKF is intentionally minimal (no schema registry, no required tooling), so extra keys and types are legal. One divergence to know: OKF reserves a chronological `log.md`; here the log is git history, so a consumer expecting `log.md` should read `git log` instead.
+The private working tree is **OKF-aligned, not itself an interchange bundle**: it also contains raw sources, agent instructions, configuration, hooks, and git history. Run `bin/wiki-okf export <wiki-root> <empty-destination>` to produce the public, Markdown-only boundary, then `bin/wiki-okf validate <destination>` to check its structure. The exporter strips frontmatter from reserved `index.md`/`log.md` files and excludes operational/private material.
+
+Concept pages map directly to OKF v0.1: Markdown + YAML frontmatter with `type:` as the only required field; `title` / `description` / `tags` / `timestamp` carry OKF's recommended semantics; file paths identify concepts; relative Markdown links form the graph. `resource:` keeps its OKF meaning (the asset a concept describes) and is distinct from plugin extensions such as `synthesized_from:`, `reviewed:`, and `aliases:`. The structural validator is deliberately conservative and dependency-free; it does not claim to be a general YAML-schema validator.
 
 ## What it does (the lifecycle)
 

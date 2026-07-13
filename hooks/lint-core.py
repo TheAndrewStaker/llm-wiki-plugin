@@ -31,7 +31,7 @@ orphan_exempt_files = landmarks | set(cfg["orphan_exempt_extra"]) | {"MEMORY.md"
 
 
 def type_exempt(f, b):
-    return (b in type_exempt_files or b.endswith("SKILL.md")
+    return (b in type_exempt_files or b in ("index.md", "log.md") or b.endswith("SKILL.md")
             or wikilib.is_memory(f) or f.startswith(("sources/", "commands/")))
 
 
