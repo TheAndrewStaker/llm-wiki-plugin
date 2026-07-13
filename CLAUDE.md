@@ -2,7 +2,7 @@
 
 This is a **generic, open-source-bound Claude Code plugin** — a compounding knowledge wiki (Karpathy
 LLM-Wiki pattern + Google OKF). Working name `llm-wiki-plugin`; the published name will be **compendium**.
-Published PRIVATE under a **personal GitHub account** (`TheAndrewStaker`), intended to work for **anyone**.
+Published PUBLIC under a **personal GitHub account** (`TheAndrewStaker`), intended to work for **anyone**.
 
 ## The one rule that overrides everything: NO org-specific content
 
