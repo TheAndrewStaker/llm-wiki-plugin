@@ -66,4 +66,27 @@ fi
 if [ "$b" -gt 0 ] || [ "$u" -gt 0 ] || [ "$by" -gt 0 ]; then
   echo "${R}FAIL${Z} (broken links, unresolved tokens, or malformed YAML frontmatter)"; exit 1
 fi
+budget_report=$(python3 - "$KB" "${orp:--1}" "${islands:--1}" "${ml:--1}" "${col:--1}" "${unx:--1}" "${de:--1}" <<'PY'
+import json, os, sys
+root, values = sys.argv[1], sys.argv[2:]
+names = ("orphan", "islands", "missed_links", "collision", "unindexed", "deadend")
+try:
+    cfg = json.load(open(os.path.join(root, "wiki.config.json"), encoding="utf-8"))
+except (FileNotFoundError, ValueError, OSError):
+    cfg = {}
+limits = cfg.get("advisory_budgets", {})
+over = []
+for name, raw in zip(names, values):
+    limit = limits.get(name)
+    if isinstance(limit, int) and limit >= 0 and raw.isdigit() and int(raw) > limit:
+        over.append(f"  BUDGET {name}={raw} limit={limit}")
+print("\n".join(over))
+sys.exit(1 if over else 0)
+PY
+)
+budget_rc=$?
+if [ "$budget_rc" -ne 0 ]; then
+  printf '%s\n' "$budget_report"
+  echo "${R}FAIL${Z} (configured advisory budget exceeded)"; exit 1
+fi
 echo "${G}OK${Z} (hard checks clean; warnings advisory)"; exit 0

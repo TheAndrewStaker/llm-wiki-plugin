@@ -45,6 +45,7 @@ DEFAULTS = {
         "notes": ["synthesized_from"],
         "analysis": ["synthesized_from"],
         "entity": ["description"],
+        "external-pointer": ["remote_url", "remote_path", "audience"],
     },
     # advisory "consider re-confirming" age for timestamp:
     "stale_days": 120,
@@ -62,6 +63,8 @@ DEFAULTS = {
     # lifecycle mutations are explicit and independently configurable
     "auto_commit": True,
     "auto_push": False,
+    "topology": "hub-and-spokes",
+    "advisory_budgets": {},
 }
 
 

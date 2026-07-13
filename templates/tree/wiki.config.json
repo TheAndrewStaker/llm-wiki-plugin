@@ -1,5 +1,6 @@
 {
   "_comment": "Per-wiki settings read by the hooks. Every key is optional; omitted keys use built-in defaults (see hooks/wikilib.py). This file is versioned WITH your content so it syncs across machines.",
+  "topology": "hub-and-spokes",
   "content_dirs": [
     "entities/",
     "concepts/",
@@ -17,7 +18,8 @@
   "type_requirements": {
     "notes": ["synthesized_from"],
     "analysis": ["synthesized_from"],
-    "entity": ["description"]
+    "entity": ["description"],
+    "external-pointer": ["remote_url", "remote_path", "audience"]
   },
   "stale_days": 120,
   "young_wiki_pages": 20,
@@ -25,6 +27,8 @@
   "_comment_lifecycle": "Local auto-commit is on by default. Network push is opt-in; shared wikis should normally disable auto_commit and use reviewed commits/PRs.",
   "auto_commit": true,
   "auto_push": false,
+  "_comment_budgets": "Optional nonnegative limits turn selected advisories into gates. Supported keys: orphan, islands, missed_links, collision, unindexed, deadend.",
+  "advisory_budgets": {},
   "_comment_inbox": "Both 0 (disabled) by default. Set either to a positive number to get a soft-cap advisory (never blocks) when STATE.md's ## Inbox section grows past it.",
   "inbox_soft_max_items": 0,
   "inbox_soft_max_words": 0,

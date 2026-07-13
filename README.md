@@ -6,6 +6,9 @@ A compounding, file-based knowledge wiki for AI agents, packaged for Claude Code
 shared skill tree. Markdown + YAML frontmatter, a deterministic lint gate, agentic lexical search, and
 skills for setup / migrate / ingest / query / reflect / wrap.
 
+The model-neutral entry point is `bin/wiki`: `status`, `query`, `health`, `lint`, `stage`, `pointer`, and
+`okf` expose the deterministic substrate without requiring either agent harness.
+
 ## Lineage
 
 This implements three published conventions and adopts their shared vocabulary:

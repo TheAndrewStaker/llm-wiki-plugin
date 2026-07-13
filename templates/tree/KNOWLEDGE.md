@@ -123,6 +123,8 @@ you dispose.
   - `shared-wiki` — this wiki itself is shared by several people (bring your own review norms).
   Two rules make any choice work: **one home per fact, chosen by audience**, and **pointers, not
   copies**. Agents: if this entry is unfilled, ask once and record the answer here — don't guess.
+  Record the same value as `topology` in `wiki.config.json`. Create spoke references with
+  `wiki pointer`; its `external-pointer` pages require `remote_url`, `remote_path`, and `audience`.
 - **Source inbox:** where dropped sources land before ingest (e.g. `~/Downloads`, `sources/`).
 - **Corroboration sources:** authoritative places to cross-check claims (org docs, a roster, a handbook).
 - **Review gates:** which changes need your sign-off vs. proceed-and-report.

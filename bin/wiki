@@ -1,0 +1,96 @@
+#!/usr/bin/env python3
+"""Model-neutral command line for querying, checking, and maintaining a wiki."""
+import argparse
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+from urllib.parse import urlparse
+
+HERE = Path(__file__).resolve().parent
+PLUGIN = HERE.parent
+
+
+def root_path(value):
+    value = value or os.environ.get("CLAUDE_PLUGIN_OPTION_WIKI_ROOT") or os.environ.get("WIKI_ROOT") or "~/wiki"
+    return Path(value).expanduser().resolve()
+
+
+def run(command):
+    return subprocess.call([str(item) for item in command])
+
+
+def config(root):
+    try:
+        return json.loads((root / "wiki.config.json").read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return {}
+
+
+def create_pointer(root, arguments):
+    parser = argparse.ArgumentParser(prog="wiki pointer")
+    parser.add_argument("--title", required=True)
+    parser.add_argument("--url", required=True)
+    parser.add_argument("--remote-path", required=True)
+    parser.add_argument("--audience", required=True)
+    parser.add_argument("--destination", required=True, help="wiki-relative .md path")
+    args = parser.parse_args(arguments)
+    if urlparse(args.url).scheme not in ("http", "https"):
+        parser.error("--url must be an http(s) URL")
+    destination = (root / args.destination).resolve()
+    if root not in destination.parents or destination.suffix != ".md":
+        parser.error("--destination must be a .md file below the wiki root")
+    if destination.exists():
+        parser.error(f"destination already exists: {destination}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    quote = json.dumps
+    text = (
+        "---\n"
+        "type: external-pointer\n"
+        f"title: {quote(args.title)}\n"
+        f"remote_url: {quote(args.url)}\n"
+        f"remote_path: {quote(args.remote_path)}\n"
+        f"audience: {quote(args.audience)}\n"
+        "---\n\n"
+        f"Canonical team home: [{args.title}]({args.url}) at `{args.remote_path}`.\n\n"
+        "This page stores the private hub's local context and links; do not copy the team-owned content here.\n"
+    )
+    destination.write_text(text, encoding="utf-8")
+    print(destination)
+    return 0
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="wiki")
+    parser.add_argument("--root")
+    parser.add_argument("command", choices=("query", "health", "lint", "okf", "stage", "status", "pointer"))
+    parser.add_argument("arguments", nargs=argparse.REMAINDER)
+    args = parser.parse_args()
+    root = root_path(args.root)
+    if args.command == "query":
+        return run([HERE / "wiki-query", "--root", root, *args.arguments])
+    if args.command == "health":
+        return run([HERE / "wiki-query", "--root", root, "--health", *args.arguments])
+    if args.command == "lint":
+        return run([PLUGIN / "hooks/lint.sh", root, *args.arguments])
+    if args.command == "okf":
+        return run([HERE / "wiki-okf", *args.arguments])
+    if args.command == "stage":
+        return run([PLUGIN / "hooks/stage-source.py", "--root", root, *args.arguments])
+    if args.command == "pointer":
+        return create_pointer(root, args.arguments)
+    cfg = config(root)
+    branch = subprocess.run(["git", "-C", str(root), "branch", "--show-current"], capture_output=True, text=True).stdout.strip()
+    dirty = bool(subprocess.run(["git", "-C", str(root), "status", "--porcelain"], capture_output=True, text=True).stdout)
+    print(f"root: {root}")
+    print(f"topology: {cfg.get('topology', 'unrecorded')}")
+    print(f"branch: {branch or '(detached/not-git)'}")
+    print(f"dirty: {str(dirty).lower()}")
+    print(f"auto_commit: {str(bool(cfg.get('auto_commit', True))).lower()}")
+    print(f"auto_push: {str(bool(cfg.get('auto_push', False))).lower()}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

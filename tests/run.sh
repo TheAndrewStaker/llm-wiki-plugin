@@ -519,6 +519,27 @@ assert "immutable staged path rejects replacement" "2" "$rc"
 assert_contains "staged bytes remain unchanged" "trusted bytes" "$(cat "$STAGE_TMP/wiki/sources/2026-07-13-input.txt")"
 rm -rf "$STAGE_TMP"
 
+echo "--- model-neutral CLI, spoke pointers, and advisory budgets ---"
+cli_query=$("$ROOT/bin/wiki" --root "$W" query beta concept | head -1)
+assert_contains "unified CLI delegates deterministic query" "concepts/beta-renamed.md" "$cli_query"
+CLI_TMP="$(mktemp -d)"
+mkdir -p "$CLI_TMP/reference"
+printf '{"topology":"hub-and-spokes","auto_commit":false,"auto_push":false}\n' > "$CLI_TMP/wiki.config.json"
+"$ROOT/bin/wiki" --root "$CLI_TMP" pointer --title "Team handbook" \
+  --url https://example.invalid/handbook --remote-path docs/handbook.md --audience team \
+  --destination reference/team-handbook.md >/dev/null; rc=$?
+assert "pointer creation succeeds" "0" "$rc"
+assert_contains "pointer records canonical remote URL" "remote_url: \"https://example.invalid/handbook\"" "$(cat "$CLI_TMP/reference/team-handbook.md")"
+assert_contains "pointer records audience" "audience: \"team\"" "$(cat "$CLI_TMP/reference/team-handbook.md")"
+cli_status=$("$ROOT/bin/wiki" --root "$CLI_TMP" status)
+assert_contains "unified status reports topology" "topology: hub-and-spokes" "$cli_status"
+rm -rf "$CLI_TMP"
+printf '{"advisory_budgets":{"orphan":0}}\n' > "$W/wiki.config.json"
+budget_out=$(bash "$H/lint.sh" "$W" 2>&1); rc=$?
+assert "configured advisory budget fails lint" "1" "$rc"
+assert_contains "budget failure names exceeded metric" "BUDGET orphan=" "$budget_out"
+rm "$W/wiki.config.json"
+
 echo "--- session-status.sh: a stalled pull is bounded, not a session-start hang ---"
 # A stalled remote must not hang session start. Fake `git` on PATH so the `pull` subcommand
 # sleeps far past the timeout while every other git call passes through untouched, then confirm

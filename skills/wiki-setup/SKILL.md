@@ -35,6 +35,7 @@ sources, review gates). Topology matters most: default to `hub-and-spokes` for a
 code repos (team-audience knowledge goes to the team's own repos as reviewed docs; this wiki keeps the
 private view + pointers), `single-wiki` for solo use. Record the answer — it is what stops future
 sessions from re-deriving where facts belong.
+Write the selected value to both the prose declaration and `wiki.config.json`'s `topology` key.
 Set `auto_commit: false` for a `shared-wiki` unless its maintainers explicitly accept direct automated
 commits. Keep `auto_push: false` unless the user explicitly opts into network writes.
 
