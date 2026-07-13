@@ -499,6 +499,26 @@ printf '%s\n' '---' 'type: index' '---' 'invalid reserved file' > "$OKF_OUT/conc
 assert "OKF validator rejects reserved frontmatter" "1" "$rc"
 rm -rf "$OKF_TMP"
 
+echo "--- immutable source staging and provenance ledger ---"
+STAGE_TMP="$(mktemp -d)"
+mkdir -p "$STAGE_TMP/wiki"
+printf 'trusted bytes, untrusted prose\n' > "$STAGE_TMP/input.txt"
+python3 "$H/stage-source.py" --root "$STAGE_TMP/wiki" --source "$STAGE_TMP/input.txt" \
+  --destination sources/2026-07-13-input.txt --source-ref fixture >/dev/null; rc=$?
+assert "source staging succeeds" "0" "$rc"
+expected_hash=$(shasum -a 256 "$STAGE_TMP/input.txt" | awk '{print $1}')
+assert_contains "ledger records SHA-256" "$expected_hash" "$(cat "$STAGE_TMP/wiki/.compendium/ingest-ledger.jsonl")"
+python3 "$H/stage-source.py" --root "$STAGE_TMP/wiki" --source "$STAGE_TMP/input.txt" \
+  --destination sources/2026-07-13-input.txt --source-ref fixture >/dev/null; rc=$?
+assert "identical restaging is idempotent" "0" "$rc"
+assert "idempotent staging writes one ledger row" "1" "$(wc -l < "$STAGE_TMP/wiki/.compendium/ingest-ledger.jsonl" | tr -d ' ')"
+printf 'different bytes\n' > "$STAGE_TMP/input.txt"
+python3 "$H/stage-source.py" --root "$STAGE_TMP/wiki" --source "$STAGE_TMP/input.txt" \
+  --destination sources/2026-07-13-input.txt >/dev/null 2>&1; rc=$?
+assert "immutable staged path rejects replacement" "2" "$rc"
+assert_contains "staged bytes remain unchanged" "trusted bytes" "$(cat "$STAGE_TMP/wiki/sources/2026-07-13-input.txt")"
+rm -rf "$STAGE_TMP"
+
 echo "--- session-status.sh: a stalled pull is bounded, not a session-start hang ---"
 # A stalled remote must not hang session start. Fake `git` on PATH so the `pull` subcommand
 # sleeps far past the timeout while every other git call passes through untouched, then confirm
