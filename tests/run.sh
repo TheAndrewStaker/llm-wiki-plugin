@@ -493,7 +493,13 @@ assert "OKF export succeeds" "0" "$rc"
 assert "OKF exported bundle validates" "0" "$rc"
 assert "OKF root index has no frontmatter" "0" "$(head -1 "$OKF_OUT/index.md" | grep -c '^---$')"
 assert "OKF per-dir index has no frontmatter" "0" "$(head -1 "$OKF_OUT/concepts/index.md" | grep -c '^---$')"
+assert_contains "OKF exporter generates navigation section" "# concepts" "$(cat "$OKF_OUT/concepts/index.md")"
 assert "OKF export excludes raw sources" "no" "$([ -e "$OKF_OUT/sources/private.md" ] && echo yes || echo no)"
+printf '%s\n' '---' 'type: [broken' '---' 'invalid YAML' > "$OKF_OUT/concepts/invalid.md"
+okf_invalid=$("$ROOT/bin/wiki-okf" validate "$OKF_OUT" 2>&1); rc=$?
+assert "OKF validator rejects unparseable YAML" "1" "$rc"
+assert_contains "OKF validator names invalid YAML" "INVALID_YAML concepts/invalid.md" "$okf_invalid"
+rm "$OKF_OUT/concepts/invalid.md"
 printf '%s\n' '---' 'type: index' '---' 'invalid reserved file' > "$OKF_OUT/concepts/index.md"
 "$ROOT/bin/wiki-okf" validate "$OKF_OUT" >/dev/null; rc=$?
 assert "OKF validator rejects reserved frontmatter" "1" "$rc"

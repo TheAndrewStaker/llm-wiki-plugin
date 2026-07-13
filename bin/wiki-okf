@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export and structurally validate conservative OKF v0.1 interchange bundles.
+"""Export and validate conservative OKF v0.1 interchange bundles.
 
 The working wiki contains private operational material (sources, agent instructions,
 configuration, and hooks).  An OKF bundle is a deliberately smaller interchange
@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import subprocess
 import sys
 
 FRONTMATTER = re.compile(r"\A---\n(.*?)\n---(?:\n|\Z)", re.S)
@@ -19,6 +20,23 @@ TYPE = re.compile(r"(?m)^type:[ \t]*([^\s#][^\n]*)$")
 
 def strip_frontmatter(text):
     return FRONTMATTER.sub("", text, count=1)
+
+
+def yaml_parseable(text):
+    try:
+        import yaml
+    except ImportError:
+        ruby = shutil.which("ruby")
+        if not ruby:
+            return None
+        return subprocess.run(
+            [ruby, "-ryaml", "-e", "YAML.parse(STDIN.read)"],
+            input=text, text=True, capture_output=True,
+        ).returncode == 0
+    try:
+        return isinstance(yaml.safe_load(text), dict)
+    except yaml.YAMLError:
+        return False
 
 
 def validate(root):
@@ -38,13 +56,34 @@ def validate(root):
             errors.append(f"NON_UTF8 {rel}")
             continue
         fm = FRONTMATTER.match(text)
-        if path.name in ("index.md", "log.md"):
+        if path.name == "index.md":
+            root_version = path == root / "index.md" and fm and re.search(
+                r'(?m)^okf_version:\s*["\']?0\.1["\']?\s*$', fm.group(1)
+            )
+            if fm and not root_version:
+                errors.append(f"RESERVED_FRONTMATTER {rel}")
+            if fm and root_version and yaml_parseable(fm.group(1)) is not True:
+                errors.append(f"INVALID_YAML {rel}")
+            body = strip_frontmatter(text)
+            if not re.search(r"(?m)^#\s+\S", body):
+                errors.append(f"INVALID_INDEX {rel}")
+        elif path.name == "log.md":
             if fm:
                 errors.append(f"RESERVED_FRONTMATTER {rel}")
+            headings = re.findall(r"(?m)^##\s+(.+?)\s*$", text)
+            if not headings or any(not re.fullmatch(r"\d{4}-\d{2}-\d{2}", item) for item in headings):
+                errors.append(f"INVALID_LOG {rel}")
         elif not fm:
             errors.append(f"MISSING_FRONTMATTER {rel}")
-        elif not TYPE.search(fm.group(1)):
-            errors.append(f"MISSING_TYPE {rel}")
+        else:
+            parsed = yaml_parseable(fm.group(1))
+            if parsed is None:
+                errors.append("YAML_PARSER_UNAVAILABLE install PyYAML or Ruby")
+                break
+            if not parsed:
+                errors.append(f"INVALID_YAML {rel}")
+            elif not TYPE.search(fm.group(1)):
+                errors.append(f"MISSING_TYPE {rel}")
     if not (root / "index.md").is_file():
         errors.append("MISSING_ROOT_INDEX index.md")
     return errors
@@ -75,23 +114,43 @@ def export(source, destination, force=False):
     if (source / "archive").is_dir() and "archive/" not in content_dirs:
         content_dirs.append("archive/")
 
-    root_index = strip_frontmatter((source / "KNOWLEDGE.md").read_text(encoding="utf-8"))
-    (destination / "index.md").write_text(root_index.lstrip("\n"), encoding="utf-8")
-
-    copied = 1
+    copied = 0
     for dirname in content_dirs:
         base = (source / dirname).resolve()
         if source not in base.parents or not base.is_dir():
             continue
         for src in sorted(base.rglob("*.md")):
+            if src.name in ("index.md", "log.md"):
+                continue
             rel = src.relative_to(source)
             dst = destination / rel
             dst.parent.mkdir(parents=True, exist_ok=True)
-            text = src.read_text(encoding="utf-8")
-            if src.name in ("index.md", "log.md"):
-                text = strip_frontmatter(text).lstrip("\n")
-            dst.write_text(text, encoding="utf-8")
+            dst.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
             copied += 1
+
+    # Generate canonical navigation indexes rather than leaking working-tree prose or
+    # carrying forward index stubs that do not satisfy OKF's section/list structure.
+    directories = {destination}
+    directories.update(path.parent for path in destination.rglob("*.md"))
+    for directory in sorted(directories, key=lambda p: len(p.parts), reverse=True):
+        entries = []
+        for child in sorted(p for p in directory.iterdir() if p.is_dir() and any(p.rglob("*.md"))):
+            entries.append(f"* [{child.name}]({child.name}/) - concept group")
+        for concept in sorted(
+            p for p in directory.glob("*.md") if p.name not in ("index.md", "log.md")
+        ):
+            text = concept.read_text(encoding="utf-8")
+            fm = FRONTMATTER.match(text)
+            title_match = re.search(r'(?m)^title:\s*["\']?(.+?)["\']?\s*$', fm.group(1) if fm else "")
+            description_match = re.search(r'(?m)^description:\s*["\']?(.+?)["\']?\s*$', fm.group(1) if fm else "")
+            title = title_match.group(1) if title_match else concept.stem
+            description = description_match.group(1) if description_match else "concept"
+            entries.append(f"* [{title}]({concept.name}) - {description}")
+        heading = "Contents" if directory == destination else directory.name
+        (directory / "index.md").write_text(
+            f"# {heading}\n\n" + ("\n".join(entries) + "\n" if entries else ""), encoding="utf-8"
+        )
+        copied += 1
 
     errors = validate(destination)
     if errors:
@@ -117,7 +176,7 @@ def main():
                 for error in errors:
                     print(error)
                 return 1
-            print("OKF structural validation: OK")
+            print("OKF validation: OK")
         else:
             count = export(args.source, args.destination, args.force)
             print(f"Exported {count} Markdown files to {Path(args.destination).resolve()}")
