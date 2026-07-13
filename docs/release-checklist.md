@@ -1,6 +1,7 @@
 # Public release checklist
 
 - [ ] Choose the final package/repository name and update both manifests, marketplace metadata, docs, and tags.
+- [ ] Replace development-local marketplace source metadata with the chosen public distribution layout.
 - [ ] Run the full golden suite and both Claude/Codex manifest validators in clean environments.
 - [ ] Install from a clean clone in Claude Code and Codex; exercise setup, ingest, query, wrap, and uninstall.
 - [ ] Verify all nine skills appear in both harness catalogs and their starter prompts name the right skill.

@@ -9,6 +9,12 @@ skills for setup / migrate / ingest / query / reflect / wrap.
 The model-neutral entry point is `bin/wiki`: `status`, `query`, `health`, `eval`, `lint`, `stage`, `pointer`, and
 `okf` expose the deterministic substrate without requiring either agent harness.
 
+For local Codex development, register this checkout as a marketplace with
+`codex plugin marketplace add /path/to/llm-wiki-plugin`, then install
+`codex plugin add llm-wiki-plugin@llm-wiki-plugin`. Restart Codex after installation so it rebuilds the
+skill catalog. The repository-local marketplace points back to this plugin root, so development updates
+remain testable without publishing.
+
 ## Lineage
 
 This implements three published conventions and adopts their shared vocabulary:
