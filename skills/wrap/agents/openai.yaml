@@ -1,0 +1,4 @@
+interface:
+  display_name: "Wrap Session"
+  short_description: "File durable session findings into the wiki"
+  default_prompt: "Use $wrap to file this session’s durable findings."

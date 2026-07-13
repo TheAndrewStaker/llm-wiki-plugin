@@ -1,0 +1,4 @@
+interface:
+  display_name: "Audit Wiki Page"
+  short_description: "Verify wiki claims against cited sources"
+  default_prompt: "Use $audit to verify this wiki page against its sources."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Import Existing Docs"
+  short_description: "Migrate existing documents into a wiki"
+  default_prompt: "Use $wiki-init to migrate these documents into my wiki."

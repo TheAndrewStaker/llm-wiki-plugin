@@ -1,0 +1,4 @@
+interface:
+  display_name: "Ingest Source"
+  short_description: "Compile a source into the knowledge wiki"
+  default_prompt: "Use $ingest-source to ingest this source into my wiki."

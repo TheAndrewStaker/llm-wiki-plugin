@@ -1,0 +1,4 @@
+interface:
+  display_name: "Query Wiki"
+  short_description: "Answer from the wiki with page citations"
+  default_prompt: "Use $query to answer this question from my wiki."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Set Up Wiki"
+  short_description: "Scaffold and configure a knowledge wiki"
+  default_prompt: "Use $wiki-setup to create my knowledge wiki."

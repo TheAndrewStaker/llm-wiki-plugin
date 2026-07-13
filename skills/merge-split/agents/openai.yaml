@@ -1,0 +1,4 @@
+interface:
+  display_name: "Merge or Split Pages"
+  short_description: "Repair duplicate or overloaded wiki pages"
+  default_prompt: "Use $merge-split to repair these overlapping wiki pages."

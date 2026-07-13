@@ -1,0 +1,24 @@
+{
+  "name": "llm-wiki-plugin",
+  "version": "0.1.0",
+  "description": "A compounding, file-based knowledge wiki for AI agents.",
+  "author": {
+    "name": "Andrew Staker"
+  },
+  "license": "Apache-2.0",
+  "keywords": ["knowledge-base", "wiki", "memory", "okf", "llm-wiki", "notes"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "LLM Wiki",
+    "shortDescription": "Maintain a compounding Markdown knowledge wiki",
+    "longDescription": "Ingest, query, audit, reflect on, and maintain a file-based knowledge wiki with deterministic health checks.",
+    "developerName": "Andrew Staker",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write"],
+    "defaultPrompt": [
+      "Set up a compounding knowledge wiki.",
+      "Ingest this source into my knowledge wiki.",
+      "Query my wiki and cite the pages you use."
+    ]
+  }
+}

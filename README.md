@@ -2,7 +2,9 @@
 
 > Working name. The published name will be **compendium**; this repo is private during dogfooding and internal sharing.
 
-A compounding, file-based knowledge wiki for AI agents, packaged as a Claude Code plugin. Markdown + YAML frontmatter, a deterministic lint gate, agentic lexical search, and skills for setup / migrate / ingest / query / reflect / wrap.
+A compounding, file-based knowledge wiki for AI agents, packaged for Claude Code and Codex from one
+shared skill tree. Markdown + YAML frontmatter, a deterministic lint gate, agentic lexical search, and
+skills for setup / migrate / ingest / query / reflect / wrap.
 
 ## Lineage
 
@@ -36,7 +38,7 @@ A wiki scaffolded here is a valid OKF v0.1 bundle. What maps directly: markdown 
 - `hooks/` — the deterministic engine: `lint.sh` (+ `lint-core.py`, `graph-check.py`, `missed-links.py`, `wanted-pages.py`), `stale-source.py`, `reflect-scope.py`, `rewrite-links.py`, and lifecycle hooks `session-status.sh` / `auto-commit.sh` / `pre-commit`. All read per-wiki settings from `wiki.config.json` via `wikilib.py`; no host-specific assumptions.
 - `bin/wiki-query` — deterministic BM25 lexical search (no model, no network): `wiki-query [--type T] [--tag T] [--neighbors] [--limit N] TERMS`, `--catalog` to (re)write `catalog.tsv`, `--health` for a deterministic index-size recall tripwire. **Indexes git-tracked pages only** (`git ls-files`; `sources/` excluded) — a page is findable once committed, which the auto-commit hook does each turn; in a wiki that is not a git repo, search returns nothing.
 - `templates/` — wiki scaffolding: the full type-dir tree with index stubs, `KNOWLEDGE.md` / `STATE.md` / `ROADMAP.md`, `wiki.config.json`, the allowlist `gitignore` (renamed on install), and `CLAUDE.stanza.md` (the contract that makes sessions consult the wiki). Plus `ci/wiki-health.yml`, an optional GitHub Actions workflow that runs the deterministic health stack weekly and keeps the report in one recurring issue (the judgment passes stay interactive by design); it also carries an opt-in lychee job for external-URL rot, since CI is where the network lives (local tooling stays offline and reports URLs as UNCHECKABLE).
-- `skills/` — `wiki-setup`, `wiki-init`, `reflect`, `audit`, `merge-split`, `ingest-source`, `meeting-notes`, `query`, `wrap`. All nine are skills (commands and skills are unified in Claude Code); `wrap` was the one `commands/` file and moved so every component loads and autocompletes the same way.
+- `skills/` — `wiki-setup`, `wiki-init`, `reflect`, `audit`, `merge-split`, `ingest-source`, `meeting-notes`, `query`, `wrap`. Both harness manifests point at this one open `SKILL.md` tree. Invoke skills explicitly as `$wrap` in Codex; Claude also recognizes the natural-language and `/wrap` conventions described by the skill.
 - `tests/` — self-contained golden-output harness (`bash tests/run.sh`): builds a throwaway fixture wiki with git history and asserts over the lint / query / stale / health stack.
 - `scripts/check-no-org.sh` — org-residue scanner (terms live in a gitignored denylist), run as part of the test suite.
 

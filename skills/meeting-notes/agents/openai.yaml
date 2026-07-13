@@ -1,0 +1,4 @@
+interface:
+  display_name: "Meeting Notes"
+  short_description: "Turn a transcript into durable wiki notes"
+  default_prompt: "Use $meeting-notes to process this meeting transcript."

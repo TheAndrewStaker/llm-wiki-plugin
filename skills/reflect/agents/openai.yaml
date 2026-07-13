@@ -1,0 +1,4 @@
+interface:
+  display_name: "Reflect on Wiki"
+  short_description: "Propose scoped wiki maintenance updates"
+  default_prompt: "Use $reflect to propose a scoped wiki maintenance pass."
