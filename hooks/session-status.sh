@@ -23,12 +23,12 @@ H="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # 0. Sync down first, BOUNDED: never let a stalled remote block session start. Only
 #    attempted when origin + an upstream are configured. macOS ships no GNU `timeout`, so
 #    this backgrounds the pull and polls briefly instead: past PULL_TIMEOUT seconds it
-#    stops waiting (the pull keeps running detached; it lands on its own, or the next
-#    session's pull retries). Override the wait via $WIKI_PULL_TIMEOUT (tests only).
+#    terminates the attempt so it cannot mutate the checkout after session context was
+#    captured. Override the wait via $WIKI_PULL_TIMEOUT (tests only).
 if git -C "$KB" remote get-url origin >/dev/null 2>&1 \
    && git -C "$KB" rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
   PULL_TIMEOUT="${WIKI_PULL_TIMEOUT:-5}"
-  ( git -C "$KB" pull --rebase --autostash -q >/dev/null 2>&1 ) &
+  git -C "$KB" pull --rebase --autostash -q >/dev/null 2>&1 &
   pull_pid=$!
   waited=0
   while [ "$waited" -lt "$PULL_TIMEOUT" ] && kill -0 "$pull_pid" 2>/dev/null; do
@@ -36,8 +36,9 @@ if git -C "$KB" remote get-url origin >/dev/null 2>&1 \
     waited=$((waited + 1))
   done
   if kill -0 "$pull_pid" 2>/dev/null; then
-    warn="wiki pull --rebase exceeded ${PULL_TIMEOUT}s (slow/stalled remote) -- skipped for this session; it keeps running in the background"
-    disown "$pull_pid" 2>/dev/null || true
+    kill "$pull_pid" 2>/dev/null || true
+    wait "$pull_pid" 2>/dev/null || true
+    warn="wiki pull --rebase exceeded ${PULL_TIMEOUT}s (slow/stalled remote) -- terminated; retry manually"
   else
     wait "$pull_pid"
     pull_rc=$?

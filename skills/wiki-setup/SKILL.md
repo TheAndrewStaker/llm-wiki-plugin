@@ -35,6 +35,8 @@ sources, review gates). Topology matters most: default to `hub-and-spokes` for a
 code repos (team-audience knowledge goes to the team's own repos as reviewed docs; this wiki keeps the
 private view + pointers), `single-wiki` for solo use. Record the answer — it is what stops future
 sessions from re-deriving where facts belong.
+Set `auto_commit: false` for a `shared-wiki` unless its maintainers explicitly accept direct automated
+commits. Keep `auto_push: false` unless the user explicitly opts into network writes.
 
 ## Step 4 — Install the wiki's own lint scripts
 Copy `${CLAUDE_PLUGIN_ROOT}/hooks/`{lint.sh, lint-core.py, graph-check.py, missed-links.py, stale-source.py,
@@ -62,5 +64,5 @@ relative-path (load-bearing for cross-tool clickability). Optional; blocks nothi
 Summarize what was created. State plainly: **"From now on, changes under your wiki auto-commit at the end of
 each turn"** (via the plugin's Stop hook), how to see them (`git -C <wiki> log`), and how to turn it off
 (disable the plugin to stop the hooks; `git -C <wiki> config --unset core.hooksPath` to drop the lint gate).
-If a content remote exists, note that commits also push.
+If the user opted into `auto_push` and a content remote exists, note that commits also push.
 Then point the user at `wiki-init` if they have existing docs to migrate.

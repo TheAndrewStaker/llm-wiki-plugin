@@ -528,7 +528,7 @@ REAL_GIT="$(command -v git)"
 cat > "$FAKEBIN/git" <<EOF
 #!/usr/bin/env bash
 for a in "\$@"; do
-  if [ "\$a" = "pull" ]; then sleep 10; exit 0; fi
+  if [ "\$a" = "pull" ]; then sleep 10; touch "$FAKEBIN/pull-completed"; exit 0; fi
 done
 exec "$REAL_GIT" "\$@"
 EOF
@@ -542,8 +542,37 @@ out=$(WIKI_ROOT="$W" WIKI_PULL_TIMEOUT=2 PATH="$FAKEBIN:$PATH" bash "$H/session-
 elapsed=$(( $(date +%s) - start ))
 assert "session-status returns well before the stalled pull would finish" "yes" "$([ "$elapsed" -le 8 ] && echo yes || echo no)"
 assert_contains "session-status warns about the stalled pull" "exceeded" "$out"
+sleep 1
+assert "timed-out pull cannot later mutate the wiki" "no" "$([ -e "$FAKEBIN/pull-completed" ] && echo yes || echo no)"
 git -C "$W" remote remove origin >/dev/null 2>&1
 rm -rf "$FAKEBIN"
+
+echo "--- auto-commit policy and lifecycle lock ---"
+AUTO_TMP="$(mktemp -d)"
+git -C "$AUTO_TMP" init -q
+git -C "$AUTO_TMP" config user.name test
+git -C "$AUTO_TMP" config user.email test@example.invalid
+printf 'initial\n' > "$AUTO_TMP/page.md"
+git -C "$AUTO_TMP" add page.md
+git -C "$AUTO_TMP" commit -qm initial
+printf '{"auto_commit": false, "auto_push": false}\n' > "$AUTO_TMP/wiki.config.json"
+printf 'changed\n' >> "$AUTO_TMP/page.md"
+before=$(git -C "$AUTO_TMP" rev-parse HEAD)
+printf '{}\n' | WIKI_ROOT="$AUTO_TMP" bash "$H/auto-commit.sh" >/dev/null 2>&1; rc=$?
+assert "disabled auto-commit is a clean no-op" "0" "$rc"
+assert "disabled auto-commit creates no commit" "$before" "$(git -C "$AUTO_TMP" rev-parse HEAD)"
+printf '{"auto_commit": true, "auto_push": false}\n' > "$AUTO_TMP/wiki.config.json"
+mkdir "$AUTO_TMP/.git/wiki-auto-commit.lock"
+printf '%s\n' "$$" > "$AUTO_TMP/.git/wiki-auto-commit.lock/pid"
+printf '{}\n' | WIKI_ROOT="$AUTO_TMP" bash "$H/auto-commit.sh" >/dev/null 2>&1; rc=$?
+assert "live lifecycle lock makes concurrent hook a no-op" "0" "$rc"
+assert "lifecycle lock prevents concurrent commit" "$before" "$(git -C "$AUTO_TMP" rev-parse HEAD)"
+rm "$AUTO_TMP/.git/wiki-auto-commit.lock/pid"
+rmdir "$AUTO_TMP/.git/wiki-auto-commit.lock"
+printf '{}\n' | WIKI_ROOT="$AUTO_TMP" bash "$H/auto-commit.sh" >/dev/null 2>&1; rc=$?
+assert "enabled auto-commit succeeds" "0" "$rc"
+assert "enabled auto-commit records changes" "yes" "$([ "$(git -C "$AUTO_TMP" rev-parse HEAD)" != "$before" ] && echo yes || echo no)"
+rm -rf "$AUTO_TMP"
 
 echo
 echo "======================================"

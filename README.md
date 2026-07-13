@@ -32,7 +32,7 @@ Concept pages map directly to OKF v0.1: Markdown + YAML frontmatter with `type:`
    - **Audit**: per-page citation check (`audit` skill) — verify each claim against the sources it cites (subagent per source, optional adversarial pass), findings to a checkbox report, applied only after confirmation.
    - **Merge/split**: the `merge-split` skill repairs "one home per fact" violations (lint's COLLISION advisory) — fold duplicates into a survivor or split an overloaded page, with `hooks/rewrite-links.py` repointing every inbound link deterministically; superseded pages archive, never delete.
    - **Wrap**: the `wrap` skill (`$wrap` in Codex; `/wrap` is also recognized in Claude) files a session's durable findings and commits.
-   - **Auto-commit**: `hooks/auto-commit.sh` (Stop/SessionEnd hooks) commits wiki changes at the end of each turn, so the wiki is always versioned without ceremony.
+   - **Auto-commit**: `hooks/auto-commit.sh` serializes Stop/SessionEnd mutations and commits wiki changes when `auto_commit` is enabled. Network push is separately opt-in with `auto_push`; both live in `wiki.config.json`.
    - **Lint gate**: `hooks/lint.sh` hard-fails on broken links, unresolved commit-gate tokens, and malformed YAML frontmatter (fail-closed: a crash blocks, never passes blind); advisory warnings cover orphans, islands, missed links, missing `type:`, stale dates, title-alias collisions, unindexed pages, per-type missing frontmatter (`type_requirements`), dead-end pages, supersede hygiene (live links to superseded pages, superseded chains), and the wanted-pages red-link ranking. Runs as the wiki's pre-commit and on demand.
 
 ## What's here
