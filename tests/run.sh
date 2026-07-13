@@ -17,7 +17,7 @@ assert() { # assert "<label>" <expected> <actual>
   else fail=$((fail+1)); printf 'FAIL  %s (expected %s, got %s)\n' "$1" "$2" "$3"; fi
 }
 assert_contains() { # assert_contains "<label>" "<needle>" "<haystack>"
-  if printf '%s' "$3" | grep -qF "$2"; then pass=$((pass+1)); printf 'PASS  %s\n' "$1"
+  if printf '%s' "$3" | grep -qF -- "$2"; then pass=$((pass+1)); printf 'PASS  %s\n' "$1"
   else fail=$((fail+1)); printf 'FAIL  %s (missing: %s)\n' "$1" "$2"; fi
 }
 
@@ -442,6 +442,38 @@ rm -rf "$(dirname "$T")"
 echo "--- org-residue scan (scanner ships; terms live in a gitignored denylist) ---"
 bash "$ROOT/scripts/check-no-org.sh" >/dev/null 2>&1; rc=$?
 assert "org-residue scan passes on tracked repo" "0" "$rc"
+
+echo "--- meeting media transcription wrapper ---"
+MEDIA_TMP="$(mktemp -d)"
+mkdir -p "$MEDIA_TMP/bin" "$MEDIA_TMP/out"
+touch "$MEDIA_TMP/meeting.mp4"
+cat > "$MEDIA_TMP/bin/ffmpeg" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+cat > "$MEDIA_TMP/bin/mlx_whisper" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$@" > "$TRANSCRIBE_ARGS"
+out=; name=
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --output-dir) out=$2; shift 2 ;;
+    --output-name) name=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+for extension in txt vtt srt tsv json; do printf 'fixture\n' > "$out/$name.$extension"; done
+EOF
+chmod +x "$MEDIA_TMP/bin/ffmpeg" "$MEDIA_TMP/bin/mlx_whisper"
+TRANSCRIBE_ARGS="$MEDIA_TMP/args" PATH="$MEDIA_TMP/bin:$PATH" \
+  WIKI_TRANSCRIPTION_MODEL=/models/test WIKI_TRANSCRIPTION_LANGUAGE=en \
+  bash "$ROOT/skills/meeting-notes/scripts/transcribe-media.sh" \
+  "$MEDIA_TMP/meeting.mp4" "$MEDIA_TMP/out" >/dev/null
+assert_contains "transcriber receives configured model" "/models/test" "$(cat "$MEDIA_TMP/args")"
+assert_contains "transcriber requests word timestamps" "--word-timestamps" "$(cat "$MEDIA_TMP/args")"
+assert "transcriber emits wiki-ready VTT" "yes" "$([ -s "$MEDIA_TMP/out/meeting.vtt" ] && echo yes || echo no)"
+assert "transcriber emits timestamp JSON" "yes" "$([ -s "$MEDIA_TMP/out/meeting.json" ] && echo yes || echo no)"
+rm -rf "$MEDIA_TMP"
 
 echo "--- session-status.sh: a stalled pull is bounded, not a session-start hang ---"
 # A stalled remote must not hang session start. Fake `git` on PATH so the `pull` subcommand

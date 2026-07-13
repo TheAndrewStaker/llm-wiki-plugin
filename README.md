@@ -23,7 +23,7 @@ A wiki scaffolded here is a valid OKF v0.1 bundle. What maps directly: markdown 
 3. **Run the daily loop** —
    - **SessionStart**: `hooks/session-status.sh` injects the wiki's `STATE.md` focus block plus health warnings (and per-org `status.d/*.sh` drop-ins) into every session.
    - **Query**: the `query` skill (index-first, link-walk, answer with citations, file the answer back) on top of `bin/wiki-query` lexical search.
-   - **Ingest**: `ingest-source` (articles/PDFs/books) and `meeting-notes` (transcripts) stage raw sources in `sources/` and write cross-linked synthesis pages.
+   - **Ingest**: `ingest-source` (articles/PDFs/books) and `meeting-notes` (existing transcripts or locally transcribed audio/video recordings) stage raw text sources in `sources/` and write cross-linked synthesis pages.
    - **Reflect**: scoped, reversible staleness/contradiction pass — proposals to a dated log, applied only after user confirmation. `hooks/reflect-scope.py` bounds each pass; `hooks/stale-source.py` flags pages whose `synthesized_from:` source changed.
    - **Audit**: per-page citation check (`audit` skill) — verify each claim against the sources it cites (subagent per source, optional adversarial pass), findings to a checkbox report, applied only after confirmation.
    - **Merge/split**: the `merge-split` skill repairs "one home per fact" violations (lint's COLLISION advisory) — fold duplicates into a survivor or split an overloaded page, with `hooks/rewrite-links.py` repointing every inbound link deterministically; superseded pages archive, never delete.
