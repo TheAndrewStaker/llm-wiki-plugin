@@ -29,8 +29,10 @@ def yaml_parseable(text):
         ruby = shutil.which("ruby")
         if not ruby:
             return None
+        # Mirror the PyYAML branch: parseable AND a mapping at the root.
+        check = "node = YAML.parse(STDIN.read); exit(node && node.root.is_a?(Psych::Nodes::Mapping) ? 0 : 1)"
         return subprocess.run(
-            [ruby, "-ryaml", "-e", "YAML.parse(STDIN.read)"],
+            [ruby, "-ryaml", "-e", check],
             input=text, text=True, capture_output=True,
         ).returncode == 0
     try:
@@ -62,8 +64,13 @@ def validate(root):
             )
             if fm and not root_version:
                 errors.append(f"RESERVED_FRONTMATTER {rel}")
-            if fm and root_version and yaml_parseable(fm.group(1)) is not True:
-                errors.append(f"INVALID_YAML {rel}")
+            if fm and root_version:
+                parsed = yaml_parseable(fm.group(1))
+                if parsed is None:
+                    errors.append("YAML_PARSER_UNAVAILABLE install PyYAML or Ruby")
+                    break
+                if not parsed:
+                    errors.append(f"INVALID_YAML {rel}")
             body = strip_frontmatter(text)
             if not re.search(r"(?m)^#\s+\S", body):
                 errors.append(f"INVALID_INDEX {rel}")
@@ -147,8 +154,12 @@ def export(source, destination, force=False):
             description = description_match.group(1) if description_match else "concept"
             entries.append(f"* [{title}]({concept.name}) - {description}")
         heading = "Contents" if directory == destination else directory.name
+        # Declare the targeted spec version at the bundle root (the one index
+        # permitted to carry frontmatter).
+        preamble = '---\nokf_version: "0.1"\n---\n\n' if directory == destination else ""
         (directory / "index.md").write_text(
-            f"# {heading}\n\n" + ("\n".join(entries) + "\n" if entries else ""), encoding="utf-8"
+            preamble + f"# {heading}\n\n" + ("\n".join(entries) + "\n" if entries else ""),
+            encoding="utf-8",
         )
         copied += 1
 

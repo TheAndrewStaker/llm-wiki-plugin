@@ -25,7 +25,7 @@ This implements three published conventions and adopts their shared vocabulary:
 
 ### OKF compatibility
 
-The private working tree is **OKF-aligned, not itself an interchange bundle**: it also contains raw sources, agent instructions, configuration, hooks, and git history. Run `bin/wiki-okf export <wiki-root> <empty-destination>` to produce the public, Markdown-only boundary, then `bin/wiki-okf validate <destination>` to check its structure. The exporter strips frontmatter from reserved `index.md`/`log.md` files and excludes operational/private material.
+The private working tree is **OKF-aligned, not itself an interchange bundle**: it also contains raw sources, agent instructions, configuration, hooks, and git history. Run `bin/wiki-okf export <wiki-root> <empty-destination>` to produce the public, Markdown-only boundary, then `bin/wiki-okf validate <destination>` to check its structure. The exporter excludes operational/private material along with working-tree `index.md`/`log.md` files, and generates canonical navigation indexes instead; the bundle-root index declares `okf_version: "0.1"`.
 
 Concept pages map directly to OKF v0.1: Markdown + YAML frontmatter with `type:` as the only required field; `title` / `description` / `tags` / `timestamp` carry OKF's recommended semantics; file paths identify concepts; relative Markdown links form the graph. `resource:` keeps its OKF meaning (the asset a concept describes) and is distinct from plugin extensions such as `synthesized_from:`, `reviewed:`, and `aliases:`. Validation is conservative and fail-closed: it uses PyYAML when installed or Ruby's YAML parser otherwise, and refuses to certify a bundle when neither parser is available.
 
