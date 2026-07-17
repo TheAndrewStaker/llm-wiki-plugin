@@ -25,6 +25,8 @@ missed=$(python3 "$H/missed-links.py" "$KB" 2>/dev/null || true)
 wanted=$(python3 "$H/wanted-pages.py" "$KB" 2>/dev/null || true)
 inbox=$(python3 "$H/inbox-check.py" "$KB" 2>/dev/null || true)
 drift=$(python3 "$H/timestamp-drift.py" "$KB" 2>/dev/null || true)
+port=$(python3 "$H/frontmatter-portability.py" "$KB" 2>/dev/null || true)
+neigh=$(python3 "$H/neighbor-scope.py" "$KB" 2>/dev/null || true)
 
 echo "${C}== knowledge-base lint ==${Z}"
 if [ "$core_rc" -ne 0 ]; then
@@ -39,6 +41,8 @@ printf '%s\n' "$missed" | grep '^  MISSED-LINK' || true
 printf '%s\n' "$wanted" | grep '^  WANTED' || true
 printf '%s\n' "$inbox"  | grep '^  INBOX-OVER' || true
 printf '%s\n' "$drift"  | grep '^  DRIFT' || true
+printf '%s\n' "$port"   | grep '^  PORT-' || true
+printf '%s\n' "$neigh"  | grep '^  NEIGHBOR' || true
 
 b=$(printf '%s\n'  "$core"   | sed -n 's/^CORE broken=\([0-9]*\).*/\1/p')
 u=$(printf '%s\n'  "$core"   | sed -n 's/^CORE [^ ]* unresolved=\([0-9]*\).*/\1/p')
@@ -57,14 +61,24 @@ ml=$(printf '%s\n' "$missed" | sed -n 's/^MISSED_LINKS=//p')
 wp=$(printf '%s\n' "$wanted" | sed -n 's/^WANTED=\([0-9]*\).*/\1/p')
 ib=$(printf '%s\n' "$inbox"  | sed -n 's/^INBOX=//p')
 dr=$(printf '%s\n' "$drift"  | sed -n 's/^DRIFT=\([0-9]*\).*/\1/p')
+dk=$(printf '%s\n' "$port"   | sed -n 's/^PORT dupkey=\([0-9]*\).*/\1/p')
+tb=$(printf '%s\n' "$port"   | sed -n 's/^PORT [^ ]* tab=\([0-9]*\).*/\1/p')
+pa=$(printf '%s\n' "$port"   | sed -n 's/.* ambig=\([0-9]*\).*/\1/p')
+pd=$(printf '%s\n' "$port"   | sed -n 's/.* desc=\([0-9]*\).*/\1/p')
+ng=$(printf '%s\n' "$neigh"  | sed -n 's/^NEIGHBORS=//p')
 
-echo "${C}== summary ==${Z}  broken-links:${b:-?}  unresolved:${u:-?}  bad-yaml:${by:-?}  orphans:${orp:-?}  islands:${islands:-?}  missed-links:${ml:-?}  no-type:${nt:-?}  stale:${st:-?}  collisions:${col:-?}  unindexed:${unx:-?}  missing-fields:${mf:-?}  dead-ends:${de:-?}  stale-pointers:${sp:-?}  chains:${ch:-?}  wanted:${wp:-?}  inbox:${ib:-?}  drift:${dr:-?}"
+echo "${C}== summary ==${Z}  broken-links:${b:-?}  unresolved:${u:-?}  bad-yaml:${by:-?}  orphans:${orp:-?}  islands:${islands:-?}  missed-links:${ml:-?}  no-type:${nt:-?}  stale:${st:-?}  collisions:${col:-?}  unindexed:${unx:-?}  missing-fields:${mf:-?}  dead-ends:${de:-?}  stale-pointers:${sp:-?}  chains:${ch:-?}  wanted:${wp:-?}  inbox:${ib:-?}  drift:${dr:-?}  dup-keys:${dk:-?}  fm-tabs:${tb:-?}  ambig-yaml:${pa:-?}  desc-quality:${pd:-?}  neighbors:${ng:-?}"
 # If the gate counters didn't parse, the CORE line is malformed -> fail closed, don't pass blind.
 if [ -z "$b" ] || [ -z "$u" ] || [ -z "$by" ]; then
   echo "${R}FAIL${Z} (could not read lint-core counts; failing closed)"; exit 2
 fi
 if [ "$b" -gt 0 ] || [ "$u" -gt 0 ] || [ "$by" -gt 0 ]; then
   echo "${R}FAIL${Z} (broken links, unresolved tokens, or malformed YAML frontmatter)"; exit 1
+fi
+# Duplicate keys and tabs silently corrupt frontmatter in every parser -> hard gate.
+# (Counts parsed from the PORT line; if the script crashed they are empty and we stay advisory.)
+if [ -n "${dk:-}" ] && [ -n "${tb:-}" ] && { [ "$dk" -gt 0 ] || [ "$tb" -gt 0 ]; }; then
+  echo "${R}FAIL${Z} (duplicate frontmatter keys or tab indentation -- parsers silently drop data)"; exit 1
 fi
 budget_report=$(python3 - "$KB" "${orp:--1}" "${islands:--1}" "${ml:--1}" "${col:--1}" "${unx:--1}" "${de:--1}" <<'PY'
 import json, os, sys

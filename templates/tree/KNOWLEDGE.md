@@ -71,6 +71,13 @@ decisions → the decision routing above. 7. Cross-link with relative md links, 
 `hooks/missed-links.py` and link any flagged mention of (or by) the pages you touched, both directions.
 The git commit is the log.
 
+**Point-of-contact reconcile (applies to EVERY meaningful page edit, not just ingest):** a page's inbound
+linkers summarize or depend on what it says, so changing it can silently stale them. The lint prints a
+bounded `NEIGHBOR` list at commit time (inbound linkers of the pages you changed that you did not co-edit;
+also on demand via `python3 hooks/neighbor-scope.py`). Walk that list and either reconcile each linker or
+consciously leave it. This is the cheap, every-commit half of staleness control; the judgment half stays
+with `reflect`.
+
 **Query** (ask the wiki): consult the **index first**; then `python3 "$WIKI_ROOT/bin/wiki-query" <terms>` (deterministic lexical
 search, `--type/--tag/--neighbors`) to locate pages; link-walk; **answer with citations** (relative-md
 links to the pages used); **file good answers back as pages** so explorations compound.
@@ -82,9 +89,15 @@ dead-end pages (no outgoing wiki links), and supersede hygiene (live links to su
 chains). Two more advisories are opt-in (disabled by default, both 0, in `wiki.config.json`): an Inbox
 soft-cap (`hooks/inbox-check.py`, flags STATE.md's `## Inbox` growing past a configured item/word count)
 and timestamp-drift (`hooks/timestamp-drift.py`, flags a page whose last real git edit is newer than its
-declared `reviewed:`/`timestamp:` by more than a configured number of days). The judgment pass
-(contradictions, stale-superseded claims, missing pages, weak links) is the `reflect` skill — it proposes;
-you dispose.
+declared `reviewed:`/`timestamp:` by more than a configured number of days). Frontmatter is also linted to
+the CROSS-PARSER INTERSECTION (`hooks/frontmatter-portability.py`): duplicate keys and tab indentation
+HARD-FAIL (every parser silently drops data); YAML 1.1/1.2 ambiguous scalars (bare `yes/no/on/off`,
+`NN:NN`, leading `*`/`&`, unquoted ": " in titles), deprecated singular `tag:`/`alias:`, non-list
+`tags:`/`aliases:`, and folded or over-length `description:` values warn — the description is the level-1
+retrieval surface agents scan, keep it one plain line. Cleaned advisory classes can be pinned via
+`advisory_budgets` in `wiki.config.json` (count above budget fails the commit) so drift cannot silently
+re-accumulate. The judgment pass (contradictions, stale-superseded claims, missing pages, weak links) is
+the `reflect` skill — it proposes; you dispose.
 
 ## Staleness policy (no calendar sweeps)
 - **Structural** (broken links, orphans, missing `type`) — deterministic, caught continuously by lint.
