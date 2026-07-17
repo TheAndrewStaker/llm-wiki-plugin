@@ -52,7 +52,7 @@ for f in files:
             t = parts[0].split("#")[0]
             if not t or t.startswith(("http", "mailto", "tel", "ftp")):
                 continue
-            tgt = t.lstrip("/") if t.startswith("/") else os.path.normpath(os.path.join(d, t))
+            tgt = t.lstrip("/") if t.startswith("/") else os.path.normpath(os.path.join(d, t)).replace(os.sep, "/")
             if tgt in nodes:
                 adj[f].add(tgt)
                 adj[tgt].add(f)

@@ -125,7 +125,7 @@ for f in files:
                 continue
             if t.endswith(".md"):
                 out_md[f] = out_md.get(f, 0) + 1
-            tgt = t.lstrip("/") if t.startswith("/") else os.path.normpath(os.path.join(d, t))
+            tgt = t.lstrip("/") if t.startswith("/") else os.path.normpath(os.path.join(d, t)).replace(os.sep, "/")
             if os.path.exists(tgt):
                 linked.add(tgt)
                 page_targets.setdefault(f, set()).add(tgt)

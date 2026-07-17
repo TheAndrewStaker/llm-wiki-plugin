@@ -59,7 +59,8 @@ for f in wikilib.git_files(KB):
         resolved = base.lstrip("/") if base.startswith("/") else os.path.normpath(os.path.join(d, base))
         if os.path.normpath(resolved) != old:
             return m.group(0)
-        newlink = "/" + new if base.startswith("/") else os.path.relpath(new, d or ".")
+        newlink = ("/" + new if base.startswith("/")
+                   else os.path.relpath(new, d or ".")).replace(os.sep, "/")
         i = inner.find(t)
         hits += 1
         return "](" + inner[:i] + newlink + anchor + inner[i + len(t):] + ")"

@@ -38,7 +38,7 @@ def main():
             parser.error(f"case {number} types must be a string list")
         if not all(isinstance(x, str) for x in case.get("tags", [])):
             parser.error(f"case {number} tags must be a string list")
-        command = [str(query_tool), "--root", args.root, "--limit", str(args.k)]
+        command = [sys.executable, str(query_tool), "--root", args.root, "--limit", str(args.k)]
         for value in case.get("types", []):
             command.extend(("--type", value))
         for value in case.get("tags", []):

@@ -53,7 +53,7 @@ for f in prose:
     plain = strip(raw).lower()
     linked = set()
     for tgt in re.findall(r"\]\(([^)#\s]+)", raw):
-        p = tgt if tgt.startswith("/") else os.path.normpath(os.path.join(os.path.dirname(f), tgt))
+        p = tgt if tgt.startswith("/") else os.path.normpath(os.path.join(os.path.dirname(f), tgt)).replace(os.sep, "/")
         linked.add(p.lstrip("/"))
     seen = set()
     for term, (disp, page) in term2page.items():
