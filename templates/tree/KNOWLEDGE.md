@@ -91,10 +91,11 @@ soft-cap (`hooks/inbox-check.py`, flags STATE.md's `## Inbox` growing past a con
 and timestamp-drift (`hooks/timestamp-drift.py`, flags a page whose last real git edit is newer than its
 declared `reviewed:`/`timestamp:` by more than a configured number of days). Frontmatter is also linted to
 the CROSS-PARSER INTERSECTION (`hooks/frontmatter-portability.py`): duplicate keys and tab indentation
-HARD-FAIL (every parser silently drops data); YAML 1.1/1.2 ambiguous scalars (bare `yes/no/on/off`,
-`NN:NN`, leading `*`/`&`, unquoted ": " in titles), deprecated singular `tag:`/`alias:`, non-list
-`tags:`/`aliases:`, and folded or over-length `description:` values warn — the description is the level-1
-retrieval surface agents scan, keep it one plain line. Cleaned advisory classes can be pinned via
+HARD-FAIL (every parser silently drops data); warnings cover scalars that type-flip between YAML 1.1 and
+1.2 (bare `yes/no/on/off`, `NN:NN`), values that derail any parser (a leading `*`/`&` alias/anchor;
+unquoted ": " in titles), deprecated singular `tag:`/`alias:`, non-list `tags:`/`aliases:`, and folded or
+over-length `description:` values — the description is the level-1 retrieval surface agents scan, keep it
+one plain line. Cleaned advisory classes can be pinned via
 `advisory_budgets` in `wiki.config.json` (count above budget fails the commit) so drift cannot silently
 re-accumulate. The judgment pass (contradictions, stale-superseded claims, missing pages, weak links) is
 the `reflect` skill — it proposes; you dispose.

@@ -563,6 +563,45 @@ python3 "$ROOT/bin/wiki" --root "$W" eval --cases "$EVAL_CASES" --k 5 --min-reca
 assert "retrieval eval gates a missed threshold" "1" "$rc"
 rm "$EVAL_CASES"
 
+echo "--- frontmatter portability lint ---"
+PORT_W="$(mktemp -d)/wiki"
+mkdir -p "$PORT_W/concepts"
+printf '%s\n' '---' 'type: concept' 'title: Bad' 'title: Dup' '	tabbed: x' 'publish: no' \
+  'tag: [a]' 'cssclass: wide' 'tags:' '' '- listed' 'description: >-' '  folded away' '---' 'body' \
+  > "$PORT_W/concepts/bad.md"
+printf '%s\n' '---' 'type: concept' 'title: Good' \
+  'description: "quoted: safe # not a comment"' 'tags: [a, b]' '---' 'body' \
+  > "$PORT_W/concepts/good.md"
+git -C "$PORT_W" init -q && git -C "$PORT_W" add -A
+port=$(python3 "$H/frontmatter-portability.py" "$PORT_W")
+port_machine=$(printf '%s\n' "$port" | tail -1)
+assert_contains "portability flags duplicate key" "PORT-DUPKEY" "$port"
+assert_contains "portability flags tab indentation" "PORT-TAB" "$port"
+assert_contains "portability flags Norway-problem scalar" "PORT-AMBIG" "$port"
+assert_contains "singular tag advises the real plural" "use plural 'tags:'" "$port"
+assert_contains "singular cssclass advises cssclasses" "use plural 'cssclasses:'" "$port"
+assert_contains "folded description flagged" "PORT-DESC" "$port"
+assert_contains "machine line counts the dup key" "dupkey=1" "$port_machine"
+assert_contains "quoted colon-hash value is not TITLECOLON" "titlecolon=0" "$port_machine"
+assert_contains "blank line before block list is a valid list" "nonlist=0" "$port_machine"
+bash "$H/lint.sh" "$PORT_W" >/dev/null 2>&1; rc=$?
+assert "dup-key/tab hard gate fails lint" "1" "$rc"
+
+echo "--- neighbor-scope reconcile nudge ---"
+NB_W="$(mktemp -d)/wiki"
+mkdir -p "$NB_W/concepts"
+printf '%s\n' '---' 'type: concept' 'title: A' '---' 'links [B](b.md)' > "$NB_W/concepts/a.md"
+printf '%s\n' '---' 'type: concept' 'title: B' '---' 'body' > "$NB_W/concepts/b.md"
+git -C "$NB_W" init -q && git -C "$NB_W" add -A \
+  && git -C "$NB_W" -c user.email=t@test -c user.name=t commit -qm base
+printf 'edited\n' >> "$NB_W/concepts/b.md"
+git -C "$NB_W" add concepts/b.md
+nb=$(python3 "$H/neighbor-scope.py" "$NB_W")
+assert_contains "neighbor lists the unedited inbound linker" "NEIGHBOR concepts/a.md links concepts/b.md" "$nb"
+assert_contains "neighbor machine line counts one" "NEIGHBORS=1" "$nb"
+python3 "$H/neighbor-scope.py" --range >/dev/null 2>&1; rc=$?
+assert "dangling --range is a usage error" "2" "$rc"
+
 echo "--- session-status.sh: a stalled pull is bounded, not a session-start hang ---"
 # A stalled remote must not hang session start. Fake `git` on PATH so the `pull` subcommand
 # sleeps far past the timeout while every other git call passes through untouched, then confirm

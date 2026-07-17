@@ -26,6 +26,9 @@ a = sys.argv[1:]
 rng = None
 if "--range" in a:
     i = a.index("--range")
+    if i + 1 >= len(a):
+        print("neighbor-scope: --range requires A..B", file=sys.stderr)
+        sys.exit(2)
     rng = a[i + 1]
     del a[i:i + 2]
 KB = wikilib.resolve_root(a[0] if a else None)

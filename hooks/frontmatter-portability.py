@@ -45,6 +45,8 @@ keyline = re.compile(r"^([A-Za-z_][\w-]*):[ \t]*(.*)$")
 quoted = re.compile(r"""^(['"]).*\1$""")
 ambig_word = {"yes", "no", "on", "off"}
 sexagesimal = re.compile(r"^\d+:\d+(:\d+)*$")
+folded = re.compile(r"^[>|][+-]?\d*$")
+PLURAL = {"tag": "tags", "alias": "aliases", "cssclass": "cssclasses"}
 
 dupkey = tab = ambig = singular = nonlist = desc = titlecolon = 0
 issues = []
@@ -75,20 +77,25 @@ for f in files:
         if not km:
             continue
         key, val = km.group(1), km.group(2).strip()
-        val = re.sub(r"\s+#.*$", "", val).strip()  # trailing comment
+        if val[:1] not in ("'", '"'):
+            val = re.sub(r"\s+#.*$", "", val).strip()  # '#' inside quotes is not a comment
         if key in seen:
             flag("DUPKEY", f, f"key '{key}' repeated; parsers keep only the last value")
             dupkey += 1
         seen[key] = val
-        if key in ("tag", "alias", "cssclass"):
-            flag("SINGULAR", f, f"'{key}:' was removed in Obsidian 1.9; use plural '{key}s{'es' if key == 'alias' else ''}:'".replace("aliass", "alias"))
+        if key in PLURAL:
+            flag("SINGULAR", f, f"'{key}:' was removed in Obsidian 1.9; use plural '{PLURAL[key]}:'")
             singular += 1
         if key in ("tags", "aliases"):
             if val and not val.startswith("["):
                 flag("NONLIST", f, f"'{key}:' should be a YAML list ([a, b] or block list), got scalar '{val[:40]}'")
                 nonlist += 1
             elif not val:
-                nxt = lines[i + 1].lstrip() if i + 1 < len(lines) else ""
+                j = i + 1
+                # blank and comment-only lines may legally separate a key from its block list
+                while j < len(lines) and (not lines[j].strip() or lines[j].lstrip().startswith("#")):
+                    j += 1
+                nxt = lines[j].lstrip() if j < len(lines) else ""
                 if not nxt.startswith("- "):
                     flag("NONLIST", f, f"'{key}:' is empty and no block-list items follow")
                     nonlist += 1
@@ -106,7 +113,7 @@ for f in files:
             flag("TITLECOLON", f, f"unquoted '{key}:' contains ': ' -- breaks the whole frontmatter in strict parsers; quote the value")
             titlecolon += 1
         if key == "description":
-            if not val or val in (">", ">-", "|", "|-"):
+            if not val or folded.match(val):
                 flag("DESC", f, "description is folded/multiline; line-based catalogs and agents scanning frontmatter see it as empty -- make it one plain line")
                 desc += 1
             elif len(val) > 200:
