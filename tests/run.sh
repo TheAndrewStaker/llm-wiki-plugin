@@ -489,26 +489,26 @@ cp -R "$ROOT/templates/tree" "$OKF_WIKI"
 mkdir -p "$OKF_WIKI/sources"
 printf 'private raw source\n' > "$OKF_WIKI/sources/private.md"
 printf '%s\n' '---' 'type: concept' 'title: Exported concept' '---' 'Body.' > "$OKF_WIKI/concepts/exported.md"
-"$ROOT/bin/wiki-okf" export "$OKF_WIKI" "$OKF_OUT" >/dev/null; rc=$?
+python3 "$ROOT/bin/wiki-okf" export "$OKF_WIKI" "$OKF_OUT" >/dev/null; rc=$?
 assert "OKF export succeeds" "0" "$rc"
-"$ROOT/bin/wiki-okf" validate "$OKF_OUT" >/dev/null; rc=$?
+python3 "$ROOT/bin/wiki-okf" validate "$OKF_OUT" >/dev/null; rc=$?
 assert "OKF exported bundle validates" "0" "$rc"
 assert_contains "OKF root index declares okf_version" 'okf_version: "0.1"' "$(head -3 "$OKF_OUT/index.md")"
 assert "OKF per-dir index has no frontmatter" "0" "$(head -1 "$OKF_OUT/concepts/index.md" | grep -c '^---$')"
 assert_contains "OKF exporter generates navigation section" "# concepts" "$(cat "$OKF_OUT/concepts/index.md")"
 assert "OKF export excludes raw sources" "no" "$([ -e "$OKF_OUT/sources/private.md" ] && echo yes || echo no)"
 printf '%s\n' '---' 'type: [broken' '---' 'invalid YAML' > "$OKF_OUT/concepts/invalid.md"
-okf_invalid=$("$ROOT/bin/wiki-okf" validate "$OKF_OUT" 2>&1); rc=$?
+okf_invalid=$(python3 "$ROOT/bin/wiki-okf" validate "$OKF_OUT" 2>&1); rc=$?
 assert "OKF validator rejects unparseable YAML" "1" "$rc"
 assert_contains "OKF validator names invalid YAML" "INVALID_YAML concepts/invalid.md" "$okf_invalid"
 rm "$OKF_OUT/concepts/invalid.md"
 printf '%s\n' '---' '- not' '- a mapping' '---' 'list frontmatter' > "$OKF_OUT/concepts/listfm.md"
-okf_listfm=$("$ROOT/bin/wiki-okf" validate "$OKF_OUT" 2>&1); rc=$?
+okf_listfm=$(python3 "$ROOT/bin/wiki-okf" validate "$OKF_OUT" 2>&1); rc=$?
 assert "OKF validator rejects non-mapping frontmatter" "1" "$rc"
 assert_contains "OKF validator names non-mapping page" "INVALID_YAML concepts/listfm.md" "$okf_listfm"
 rm "$OKF_OUT/concepts/listfm.md"
 printf '%s\n' '---' 'type: index' '---' 'invalid reserved file' > "$OKF_OUT/concepts/index.md"
-"$ROOT/bin/wiki-okf" validate "$OKF_OUT" >/dev/null; rc=$?
+python3 "$ROOT/bin/wiki-okf" validate "$OKF_OUT" >/dev/null; rc=$?
 assert "OKF validator rejects reserved frontmatter" "1" "$rc"
 rm -rf "$OKF_TMP"
 
@@ -533,18 +533,18 @@ assert_contains "staged bytes remain unchanged" "trusted bytes" "$(cat "$STAGE_T
 rm -rf "$STAGE_TMP"
 
 echo "--- model-neutral CLI, spoke pointers, and advisory budgets ---"
-cli_query=$("$ROOT/bin/wiki" --root "$W" query beta concept | head -1)
+cli_query=$(python3 "$ROOT/bin/wiki" --root "$W" query beta concept | head -1)
 assert_contains "unified CLI delegates deterministic query" "concepts/beta-renamed.md" "$cli_query"
 CLI_TMP="$(mktemp -d)"
 mkdir -p "$CLI_TMP/reference"
 printf '{"topology":"hub-and-spokes","auto_commit":false,"auto_push":false}\n' > "$CLI_TMP/wiki.config.json"
-"$ROOT/bin/wiki" --root "$CLI_TMP" pointer --title "Team handbook" \
+python3 "$ROOT/bin/wiki" --root "$CLI_TMP" pointer --title "Team handbook" \
   --url https://example.invalid/handbook --remote-path docs/handbook.md --audience team \
   --destination reference/team-handbook.md >/dev/null; rc=$?
 assert "pointer creation succeeds" "0" "$rc"
 assert_contains "pointer records canonical remote URL" "remote_url: \"https://example.invalid/handbook\"" "$(cat "$CLI_TMP/reference/team-handbook.md")"
 assert_contains "pointer records audience" "audience: \"team\"" "$(cat "$CLI_TMP/reference/team-handbook.md")"
-cli_status=$("$ROOT/bin/wiki" --root "$CLI_TMP" status)
+cli_status=$(python3 "$ROOT/bin/wiki" --root "$CLI_TMP" status)
 assert_contains "unified status reports topology" "topology: hub-and-spokes" "$cli_status"
 rm -rf "$CLI_TMP"
 printf '{"advisory_budgets":{"orphan":0}}\n' > "$W/wiki.config.json"
@@ -556,10 +556,10 @@ rm "$W/wiki.config.json"
 echo "--- labeled retrieval evaluation ---"
 EVAL_CASES="$(mktemp)"
 printf '%s\n' '[{"id":"hit","query":"beta concept","expected":["concepts/beta-renamed.md"]},{"id":"miss","query":"term absent everywhere","expected":["concepts/missing.md"]}]' > "$EVAL_CASES"
-eval_out=$("$ROOT/bin/wiki" --root "$W" eval --cases "$EVAL_CASES" --k 5 --min-recall 0.5); rc=$?
+eval_out=$(python3 "$ROOT/bin/wiki" --root "$W" eval --cases "$EVAL_CASES" --k 5 --min-recall 0.5); rc=$?
 assert "retrieval eval accepts met recall threshold" "0" "$rc"
 assert_contains "retrieval eval reports recall" "recall@5=0.500" "$eval_out"
-"$ROOT/bin/wiki" --root "$W" eval --cases "$EVAL_CASES" --k 5 --min-recall 0.75 >/dev/null; rc=$?
+python3 "$ROOT/bin/wiki" --root "$W" eval --cases "$EVAL_CASES" --k 5 --min-recall 0.75 >/dev/null; rc=$?
 assert "retrieval eval gates a missed threshold" "1" "$rc"
 rm "$EVAL_CASES"
 

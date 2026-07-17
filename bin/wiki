@@ -18,7 +18,11 @@ def root_path(value):
 
 
 def run(command):
-    return subprocess.call([str(item) for item in command])
+    # Sibling tools are extensionless Python scripts (Windows cannot exec them directly,
+    # WinError 193) and lint.sh is bash; launch each through its interpreter explicitly.
+    argv = [str(item) for item in command]
+    interpreter = "bash" if argv[0].endswith(".sh") else sys.executable
+    return subprocess.call([interpreter] + argv)
 
 
 def config(root):
