@@ -661,6 +661,42 @@ assert "clean tree clears a resolved-by-hand failure breadcrumb" "no" \
   "$([ -e "$AUTO_TMP/.auto-commit-failed" ] && echo yes || echo no)"
 rm -rf "$AUTO_TMP"
 
+echo "--- multi-source provenance is read whole, not just its first entry ---"
+MS="$(mktemp -d)/wiki"
+mkdir -p "$MS"/{analyses,sources}
+printf 'one\n' > "$MS/sources/a.md"
+printf 'two\n' > "$MS/sources/b.md"
+printf -- '---\ntype: analysis\ntitle: Multi\ntimestamp: 2026-01-01\nsynthesized_from:\n  - ../sources/a.md\n  - ../sources/b.md\ntags: [x]\n---\nbody\n' > "$MS/analyses/multi.md"
+git -C "$MS" init -q
+git -C "$MS" add -A
+git -C "$MS" -c user.name=t -c user.email=t@t commit -qm c1
+# a block list must not be misreported as free-text
+first=$(python3 "$H/stale-source.py" --standing "$MS" 2>&1)
+assert "a block list is not called free-text" "0" "$(printf '%s\n' "$first" | grep -c 'is free-text')"
+# change only the SECOND source: the first-entry-only bug would miss this entirely
+printf 'two CHANGED substantively\n' > "$MS/sources/b.md"
+git -C "$MS" add -A
+git -C "$MS" -c user.name=t -c user.email=t@t commit -qm c2
+second=$(python3 "$H/stale-source.py" --range HEAD~1..HEAD "$MS" 2>&1)
+assert_contains "a change to the SECOND source is caught" "RE-CHECK analyses/multi.md" "$second"
+assert_contains "the triggering source is named" "sources/b.md" "$second"
+rm -rf "$(dirname "$MS")"
+
+echo "--- frontmatter_value does not cross a newline ---"
+fv=$(python3 - "$H" <<'PYEOF'
+import sys
+sys.path.insert(0, sys.argv[1])
+import wikilib
+page = "---\ntype: analysis\nsynthesized_from:\n  - ../sources/a.md\ntimestamp: 2026-01-01\n---\n"
+print("scalar:", wikilib.frontmatter_value(page, "timestamp"))
+print("blocklist-scalar:", wikilib.frontmatter_value(page, "synthesized_from"))
+print("blocklist-values:", ",".join(wikilib.frontmatter_values(page, "synthesized_from")))
+PYEOF
+)
+assert_contains "a scalar key still reads" "scalar: 2026-01-01" "$fv"
+assert_contains "a block-list key yields no scalar" "blocklist-scalar: None" "$fv"
+assert_contains "a block-list key yields its items" "blocklist-values: ../sources/a.md" "$fv"
+
 echo "--- inbox: one fat item is distinct from many small ones ---"
 IB="$(mktemp -d)"
 git -C "$IB" init -q

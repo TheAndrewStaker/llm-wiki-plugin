@@ -88,33 +88,32 @@ if not standing:
 recheck, orphaned, uncheckable = [], [], []
 for f in files:
     text = open(f, encoding="utf-8", errors="replace").read()
-    sf = wikilib.frontmatter_value(text, "synthesized_from")
-    if not sf:
-        continue
-    kind, target = resolve(f, sf)
-    if kind in ("url", "freetext"):
-        uncheckable.append((f, target, "a URL" if kind == "url" else "free-text"))
-        continue
-    # realpath both sides so a symlinked root (e.g. macOS /var -> /private/var) doesn't corrupt
-    # the relative path computation below.
-    real_target = os.path.realpath(target)
-    real_kb = os.path.realpath(KB)
-    inside_kb = real_target.startswith(real_kb + os.sep)
-    if not os.path.exists(target):
-        orphaned.append((f, sf))
-        continue
-    if standing:
-        if inside_kb:
+    # every declared source, not just the first: a page listing five gets five checked
+    for sf in wikilib.frontmatter_values(text, "synthesized_from"):
+        kind, target = resolve(f, sf)
+        if kind in ("url", "freetext"):
+            uncheckable.append((f, target, "a URL" if kind == "url" else "free-text"))
             continue
-        sd = git_date(target)
-        vd = verif_date(text)
-        if sd and vd and sd > vd:
-            recheck.append((f, sf, f"source {sd} > verified {vd}"))
-    else:
-        if inside_kb and os.path.isfile(target):
-            rel = os.path.normpath(os.path.relpath(real_target, real_kb))
-            if rel in changed:
-                recheck.append((f, sf, f"changed in {rng}"))
+        # realpath both sides so a symlinked root (e.g. macOS /var -> /private/var) doesn't
+        # corrupt the relative path computation below.
+        real_target = os.path.realpath(target)
+        real_kb = os.path.realpath(KB)
+        inside_kb = real_target.startswith(real_kb + os.sep)
+        if not os.path.exists(target):
+            orphaned.append((f, sf))
+            continue
+        if standing:
+            if inside_kb:
+                continue
+            sd = git_date(target)
+            vd = verif_date(text)
+            if sd and vd and sd > vd:
+                recheck.append((f, sf, f"source {sd} > verified {vd}"))
+        else:
+            if inside_kb and os.path.isfile(target):
+                rel = os.path.normpath(os.path.relpath(real_target, real_kb))
+                if rel in changed:
+                    recheck.append((f, sf, f"changed in {rng}"))
 
 for f, sf, why in sorted(recheck):
     print(f"  RE-CHECK {f}  (synthesized_from {sf}: {why})")

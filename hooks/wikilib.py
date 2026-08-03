@@ -127,16 +127,20 @@ def read(kb, rel):
 
 
 def frontmatter_value(text, key):
-    m = re.search(r"^" + re.escape(key) + r":\s*(.+)$", text[:1200], re.M)
+    # [ \t]* not \s*: \s crosses the newline, so a key with a block list below it returns
+    # that list's first item (marker attached), and an empty key returns the NEXT key's value.
+    m = re.search(r"^" + re.escape(key) + r":[ \t]*(.+)$", text[:1200], re.M)
     return m.group(1).strip() if m else None
 
 
-def fm_aliases(fm_text):
-    """Parse aliases: from a frontmatter block — inline flow ([a, b]), single scalar,
-    or block list. Shared by lint-core (collisions) and wanted-pages (resolution) so
-    the two can never disagree on what names a page answers to."""
-    # [ \t]* not \s*: \s would eat the newline and swallow the first block-list item
-    m = re.search(r"^aliases:[ \t]*(.*)$", fm_text, re.M)
+def fm_list(fm_text, key):
+    """Every value under `key` — inline flow ([a, b]), single scalar, or block list.
+
+    Use for any key that may carry more than one value. Reading such a key with
+    frontmatter_value sees at most the first entry, which silently narrows whatever
+    the caller does with it.
+    """
+    m = re.search(r"^" + re.escape(key) + r":[ \t]*(.*)$", fm_text, re.M)
     if not m:
         return []
     val = m.group(1).strip()
@@ -151,6 +155,18 @@ def fm_aliases(fm_text):
             break
         out.append(item.group(1).strip().strip("'\""))
     return out
+
+
+def fm_aliases(fm_text):
+    """Names a page answers to. Shared by lint-core (collisions) and wanted-pages
+    (resolution) so the two can never disagree."""
+    return fm_list(fm_text, "aliases")
+
+
+def frontmatter_values(text, key):
+    """fm_list against a whole page, frontmatter block located for you."""
+    block = re.match(r"^---\n(.*?)\n---", text, re.S)
+    return fm_list(block.group(1), key) if block else []
 
 
 def is_memory(f):
