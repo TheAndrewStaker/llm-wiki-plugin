@@ -39,7 +39,7 @@ printf '%s\n' "$core"   | grep -vE '^CORE ' || true
 printf '%s\n' "$graph"  | grep '^  ISLAND' || true
 printf '%s\n' "$missed" | grep '^  MISSED-LINK' || true
 printf '%s\n' "$wanted" | grep '^  WANTED' || true
-printf '%s\n' "$inbox"  | grep '^  INBOX-OVER' || true
+printf '%s\n' "$inbox"  | grep '^  INBOX-' || true
 printf '%s\n' "$drift"  | grep '^  DRIFT' || true
 printf '%s\n' "$port"   | grep '^  PORT-' || true
 printf '%s\n' "$neigh"  | grep '^  NEIGHBOR' || true

@@ -661,6 +661,27 @@ assert "clean tree clears a resolved-by-hand failure breadcrumb" "no" \
   "$([ -e "$AUTO_TMP/.auto-commit-failed" ] && echo yes || echo no)"
 rm -rf "$AUTO_TMP"
 
+echo "--- inbox: one fat item is distinct from many small ones ---"
+IB="$(mktemp -d)"
+git -C "$IB" init -q
+printf '{"inbox_soft_max_items": 15, "inbox_soft_max_words": 800, "inbox_soft_max_item_words": 40}\n' > "$IB/wiki.config.json"
+{ printf -- '---\ntype: state\ntitle: s\n---\n## Inbox\n'
+  printf -- '- short entry one\n- short entry two\n'
+  printf -- '## Next\n'; } > "$IB/STATE.md"
+ok=$(python3 "$H/inbox-check.py" "$IB")
+assert "small entries stay OK" "INBOX=OK" "$(printf '%s\n' "$ok" | tail -1)"
+{ printf -- '---\ntype: state\ntitle: s\n---\n## Inbox\n'
+  printf -- '- short entry one\n'
+  printf -- '- fat entry'; for i in $(seq 60); do printf -- ' word'; done; printf -- '\n'
+  printf -- '## Next\n'; } > "$IB/STATE.md"
+fatout=$(python3 "$H/inbox-check.py" "$IB")
+assert "one fat item trips the advisory" "INBOX=OVER" "$(printf '%s\n' "$fatout" | tail -1)"
+assert_contains "the fat item is named" "INBOX-FAT" "$fatout"
+assert "under-cap totals do not report as over" "0" "$(printf '%s\n' "$fatout" | grep -c 'items=2 max=15, words=8[0-9][0-9]')"
+printf '{"inbox_soft_max_items": 15, "inbox_soft_max_words": 800}\n' > "$IB/wiki.config.json"
+assert "item cap off means no INBOX-FAT" "0" "$(python3 "$H/inbox-check.py" "$IB" | grep -c 'INBOX-FAT')"
+rm -rf "$IB"
+
 echo "--- one corpus definition for the graph and for search ---"
 CORP="$(mktemp -d)"
 git -C "$CORP" init -q
