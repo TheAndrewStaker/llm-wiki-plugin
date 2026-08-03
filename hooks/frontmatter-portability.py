@@ -39,7 +39,7 @@ import wikilib
 
 KB = wikilib.resolve_root(sys.argv[1] if len(sys.argv) > 1 else None)
 os.chdir(KB)
-files = wikilib.git_files(KB)
+files = wikilib.corpus_files(KB)
 
 keyline = re.compile(r"^([A-Za-z_][\w-]*):[ \t]*(.*)$")
 quoted = re.compile(r"""^(['"]).*\1$""")
@@ -57,8 +57,6 @@ def flag(kind, f, detail):
 
 
 for f in files:
-    if f.startswith("sources/") or wikilib.is_memory(f):
-        continue
     try:
         text = open(f, encoding="utf-8", errors="replace").read()
     except OSError:

@@ -61,10 +61,10 @@ mdlink = re.compile(r"\]\(([^)]+)\)")
 fence = re.compile(r"^\s*(```|~~~)")
 inbound = {}  # changed page -> set of unedited linkers
 
-for f in wikilib.git_files(KB):
+for f in wikilib.corpus_files(KB):
     b = os.path.basename(f)
     if (f in changed or b == "index.md" or b in landmarks
-            or f.startswith(("archive/", "sources/")) or wikilib.is_memory(f)):
+            or f.startswith("archive/")):
         continue
     d = os.path.dirname(f)
     in_fence = False
