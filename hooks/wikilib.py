@@ -35,6 +35,11 @@ DEFAULTS = {
     "orphan_exempt_extra": [],
     # extra basenames exempt from the type: frontmatter requirement
     "type_exempt_extra": [],
+    # path prefixes that are not wiki pages: the raw layer, plus agent tooling that sits
+    # beside the wiki when its root is also the agent config dir. Excluded from the graph
+    # and from search so tooling never outranks knowledge. Memory dirs drop out too via
+    # is_memory() -- a separate store with its own index.
+    "corpus_exclude": ["sources/", "commands/", "skills/", "hooks/"],
     # lowercased terms too generic to require a canonical link to (missed-link stoplist)
     "missed_link_stop": [],
     # lowercased titles/aliases allowed on more than one page (collision advisory exemptions)
@@ -98,6 +103,19 @@ def git_files(kb, pattern="*.md"):
         cwd=kb, capture_output=True, text=True,
     ).stdout
     return [f for f in out.splitlines() if f]
+
+
+def corpus_files(kb, cfg=None, pattern="*.md"):
+    """Git-tracked pages that are actual wiki knowledge.
+
+    The one definition of "the corpus", shared by the graph check and by search, so those
+    two never disagree about what counts as a page. Drops corpus_exclude prefixes and the
+    memory store.
+    """
+    cfg = cfg if cfg is not None else load_config(kb)
+    skip = tuple(cfg.get("corpus_exclude") or ())
+    return [f for f in git_files(kb, pattern)
+            if not (skip and f.startswith(skip)) and not is_memory(f)]
 
 
 def read(kb, rel):

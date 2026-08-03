@@ -655,7 +655,37 @@ rmdir "$AUTO_TMP/.git/wiki-auto-commit.lock"
 printf '{}\n' | WIKI_ROOT="$AUTO_TMP" bash "$H/auto-commit.sh" >/dev/null 2>&1; rc=$?
 assert "enabled auto-commit succeeds" "0" "$rc"
 assert "enabled auto-commit records changes" "yes" "$([ "$(git -C "$AUTO_TMP" rev-parse HEAD)" != "$before" ] && echo yes || echo no)"
+printf 'stale failure\n' > "$AUTO_TMP/.auto-commit-failed"
+printf '{}\n' | WIKI_ROOT="$AUTO_TMP" bash "$H/auto-commit.sh" >/dev/null 2>&1
+assert "clean tree clears a resolved-by-hand failure breadcrumb" "no" \
+  "$([ -e "$AUTO_TMP/.auto-commit-failed" ] && echo yes || echo no)"
 rm -rf "$AUTO_TMP"
+
+echo "--- one corpus definition for the graph and for search ---"
+CORP="$(mktemp -d)"
+git -C "$CORP" init -q
+git -C "$CORP" config user.name test
+git -C "$CORP" config user.email test@example.invalid
+mkdir -p "$CORP/concepts" "$CORP/skills/tooling" "$CORP/projects/repo/memory"
+printf -- '---\ntype: concept\ntitle: Widget Calibration\n---\nwidget calibration procedure\n' \
+  > "$CORP/concepts/widget.md"
+printf -- '# SKILL\nwidget calibration widget calibration widget calibration\n' \
+  > "$CORP/skills/tooling/SKILL.md"
+printf -- '# memory\nwidget calibration widget calibration widget calibration\n' \
+  > "$CORP/projects/repo/memory/widget.md"
+git -C "$CORP" add -A >/dev/null 2>&1
+git -C "$CORP" commit -qm seed
+top=$($Q --root "$CORP" --limit 1 widget calibration | awk '{print $2}')
+assert "search ranks the wiki page over tooling and memory" "concepts/widget.md" "$top"
+noise=$($Q --root "$CORP" --limit 10 widget calibration | grep -c 'skills/\|/memory/')
+assert "tooling and memory are absent from search results" "0" "$noise"
+cgraph=$(python3 "$H/graph-check.py" "$CORP" 2>&1)
+assert "tooling is not an island in the wiki graph" "0" \
+  "$(printf '%s\n' "$cgraph" | grep -c 'ISLAND skills/')"
+printf '{"corpus_exclude": []}\n' > "$CORP/wiki.config.json"
+optin=$($Q --root "$CORP" --limit 10 widget calibration | grep -c 'skills/')
+assert "an empty corpus_exclude opts tooling back in" "1" "$optin"
+rm -rf "$CORP"
 
 echo
 echo "======================================"

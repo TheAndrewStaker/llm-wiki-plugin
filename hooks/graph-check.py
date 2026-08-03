@@ -21,7 +21,7 @@ import wikilib
 
 KB = wikilib.resolve_root(sys.argv[1] if len(sys.argv) > 1 else None)
 os.chdir(KB)
-files = [f for f in wikilib.git_files(KB) if not f.startswith("sources/")]
+files = wikilib.corpus_files(KB)
 nodes = set(files)
 by_base = collections.defaultdict(list)
 for f in files:

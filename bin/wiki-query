@@ -28,10 +28,27 @@ def resolve_root(cli):
     return os.path.expanduser(env) if env else os.path.expanduser("~/wiki")
 
 
+# Mirrors wikilib.corpus_files. Kept inline because this CLI is deliberately standalone.
+CORPUS_EXCLUDE = ("sources/", "commands/", "skills/", "hooks/")
+
+
+def corpus_exclude(kb):
+    import json
+    try:
+        with open(os.path.join(kb, "wiki.config.json"), encoding="utf-8") as fh:
+            configured = json.load(fh).get("corpus_exclude")
+    except (OSError, ValueError):
+        return CORPUS_EXCLUDE
+    return tuple(configured) if isinstance(configured, list) else CORPUS_EXCLUDE
+
+
 def git_files(kb):
     out = subprocess.run(["git", "ls-files", "*.md"], cwd=kb,
                          capture_output=True, text=True).stdout
-    return [f for f in out.splitlines() if f and not f.startswith("sources/")]
+    skip = corpus_exclude(kb)
+    return [f for f in out.splitlines()
+            if f and not (skip and f.startswith(skip))
+            and not (f.startswith("projects/") and "/memory/" in f)]
 
 
 def frontmatter(text):

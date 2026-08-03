@@ -55,8 +55,9 @@ trap cleanup_lock EXIT INT TERM
 
 # nothing to commit (no tracked diff AND no allowlisted untracked files) -> no-op
 if git diff --quiet && git diff --cached --quiet && [ -z "$(git ls-files --others --exclude-standard)" ]; then
-  # still try to push if we are behind-free but have unpushed commits
-  :
+  # A clean tree means an earlier failure was resolved, by this hook or by hand. Clear the
+  # breadcrumb here too, or fixing it manually leaves session-status warning forever.
+  rm -f "$KB/.auto-commit-failed"
 else
   git add -A
   if out=$(git commit -q -m "session auto-save: wiki findings ($(date +%Y-%m-%d))" 2>&1); then
