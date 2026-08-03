@@ -661,6 +661,69 @@ assert "clean tree clears a resolved-by-hand failure breadcrumb" "no" \
   "$([ -e "$AUTO_TMP/.auto-commit-failed" ] && echo yes || echo no)"
 rm -rf "$AUTO_TMP"
 
+echo "--- link-mentions: fixes what missed-links reports, and leaves quotes alone ---"
+LM="$(mktemp -d)/wiki"
+mkdir -p "$LM"/{entities,analyses,sources}
+printf -- '---\ntype: entity\ntitle: Widget Platform\ndescription: a platform\n---\nThe platform.\n' \
+  > "$LM/entities/widget-platform.md"
+cat > "$LM/analyses/mentions.md" <<'EOF'
+---
+type: analysis
+title: Mentions
+timestamp: 2026-01-01
+synthesized_from: ../sources/s.md
+---
+
+## Widget Platform in a heading must not be linked
+
+> A quote naming Widget Platform verbatim must survive untouched.
+
+Prose naming Widget Platform once, then Widget Platform again.
+
+`Widget Platform` in code is not a mention, and neither is:
+
+```
+Widget Platform in a fence
+```
+
+An [existing link](../entities/widget-platform.md) is a different case.
+EOF
+printf 'src\n' > "$LM/sources/s.md"
+git -C "$LM" init -q
+git -C "$LM" add -A
+git -C "$LM" -c user.name=t -c user.email=t@t commit -qm c1
+
+# the existing link means this page is NOT a missed mention at all
+assert "a page that already links the target reports nothing" "MISSED_LINKS=0" \
+  "$(python3 "$H/missed-links.py" "$LM" | tail -1)"
+
+# drop the existing link so the page becomes a genuine miss
+sed -i.bak 's|An \[existing link\](../entities/widget-platform.md) is a different case.|A trailing sentence.|' "$LM/analyses/mentions.md"
+rm -f "$LM/analyses/mentions.md.bak"
+assert "now it is reported once" "MISSED_LINKS=1" "$(python3 "$H/missed-links.py" "$LM" | tail -1)"
+
+dry=$(python3 "$H/link-mentions.py" "$LM")
+assert_contains "dry-run plans the insertion" "LINK analyses/mentions.md" "$dry"
+assert "dry-run writes nothing" "MISSED_LINKS=1" "$(python3 "$H/missed-links.py" "$LM" | tail -1)"
+
+python3 "$H/link-mentions.py" "$LM" --apply >/dev/null
+assert "apply clears the advisory" "MISSED_LINKS=0" "$(python3 "$H/missed-links.py" "$LM" | tail -1)"
+body=$(cat "$LM/analyses/mentions.md")
+assert "the blockquote is untouched" "1" \
+  "$(printf '%s\n' "$body" | grep -c '^> A quote naming Widget Platform verbatim must survive untouched.$')"
+assert "the heading is untouched" "1" \
+  "$(printf '%s\n' "$body" | grep -c '^## Widget Platform in a heading must not be linked$')"
+assert "the inline code span is untouched" "1" \
+  "$(printf '%s\n' "$body" | grep -c '^`Widget Platform` in code')"
+assert "the fenced line is untouched" "1" \
+  "$(printf '%s\n' "$body" | grep -c '^Widget Platform in a fence$')"
+assert "exactly one link was inserted" "1" \
+  "$(printf '%s\n' "$body" | grep -c 'Widget Platform\](../entities/widget-platform.md)')"
+assert "the second prose mention stays plain" "1" \
+  "$(printf '%s\n' "$body" | grep -c 'then Widget Platform again')"
+assert "apply is idempotent" "LINKED=0" "$(python3 "$H/link-mentions.py" "$LM" --apply | tail -1 | grep -o 'LINKED=0')"
+rm -rf "$(dirname "$LM")"
+
 echo "--- multi-source provenance is read whole, not just its first entry ---"
 MS="$(mktemp -d)/wiki"
 mkdir -p "$MS"/{analyses,sources}

@@ -171,3 +171,77 @@ def frontmatter_values(text, key):
 
 def is_memory(f):
     return f.startswith("projects/") and "/memory/" in f
+
+
+def mention_index(kb, cfg, files):
+    """Linkable page titles, lowercased title -> (display title, path).
+
+    Shared by the missed-link advisory and the linker that fixes it, so the two can
+    never disagree about what counts as a mention. Titles under 6 chars and configured
+    stopwords over-fire, so both are dropped.
+    """
+    stop = {s.lower() for s in cfg["missed_link_stop"]}
+    entity_dirs = tuple(cfg["entity_dirs"])
+    out = {}
+    for f in files:
+        if not f.startswith(entity_dirs) or os.path.basename(f) == "index.md":
+            continue
+        head = read(kb, f)[:1000]
+        m = re.search(r"^title:\s*(.+)$", head, re.M)
+        if m:
+            t = m.group(1).strip()
+            if len(t) >= 6 and t.lower() not in stop:
+                out.setdefault(t.lower(), (t, f))
+    return out
+
+
+def strip_markup(t):
+    """Body prose with frontmatter, code and existing links removed, so a term already
+    linked (or merely quoted in code) never reads as a missed mention."""
+    t = re.sub(r"^---\n.*?\n---\n", "", t, flags=re.S)
+    t = re.sub(r"```.*?```", "", t, flags=re.S)
+    t = re.sub(r"`[^`]*`", "", t)
+    t = re.sub(r"\[\[[^\]]*\]\]", "", t)
+    return re.sub(r"\[[^\]]*\]\([^)]*\)", "", t)
+
+
+def linked_targets(page, raw):
+    """Wiki-root-relative paths that `page` already links to."""
+    out = set()
+    for tgt in re.findall(r"\]\(([^)#\s]+)", raw):
+        p = (tgt if tgt.startswith("/")
+             else os.path.normpath(os.path.join(os.path.dirname(page), tgt)).replace(os.sep, "/"))
+        out.add(p.lstrip("/"))
+    return out
+
+
+def mention_re(term):
+    # Case-SENSITIVE. Page titles are proper nouns, and a lowercase occurrence usually is
+    # not the entity: "a tableau annotation" names a Kubernetes resource, not the product.
+    # Matching loosely here would have the linker rewrite those.
+    return re.compile(r"(?<![\w-])" + re.escape(term) + r"(?![\w-])")
+
+
+def missed_mentions(kb, cfg, files):
+    """Yield (prose_page, display_title, target_page, raw_text) once per target a page
+    names in prose but never links. One link per page satisfies it, so a page already
+    linking the target is skipped no matter how often it names it."""
+    index = mention_index(kb, cfg, files)
+    prose_dirs = tuple(cfg["prose_dirs"])
+    for f in files:
+        if not f.startswith(prose_dirs) or os.path.basename(f) == "index.md":
+            continue
+        if f.endswith(".base"):
+            continue
+        raw = read(kb, f)
+        plain = strip_markup(raw)
+        linked = linked_targets(f, raw)
+        seen = set()
+        for term, (disp, page) in index.items():
+            if f == page or page in seen or page in linked:
+                continue
+            # match on the display title: the index key is lowercased for dedup only
+            if not mention_re(disp).search(plain):
+                continue
+            seen.add(page)
+            yield f, disp, page, raw
