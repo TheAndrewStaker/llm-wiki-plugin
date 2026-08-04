@@ -4,12 +4,19 @@ type: frontmatter, commit-gate tokens, stale timestamps, orphan pages, title/ali
 collisions (two pages claiming the same name), pages missing from their dir's index.md,
 per-type required frontmatter fields, dead-end pages (no outgoing wiki links), live
 pages linking a superseded page, superseded pages chaining to superseded pages, and
-links whose target sits outside the wiki root (counted, never gated -- see below).
+links whose target sits outside the wiki root (counted, never gated -- see below), and
+links to a file that exists on disk but is not tracked by git.
 Always exits 0; lint.sh decides the gate.
+
+Link targets are judged against git, not against the working tree, wherever the answer
+would otherwise differ per machine: the corpus, search and the graph are all built from
+`git ls-files`, so a target the filesystem can answer for and git cannot is not part of
+the wiki that anyone else receives.
+
 Standalone: python3 hooks/lint-core.py [WIKI_ROOT]
 Ends with a machine line (all counts on one line):
     CORE broken= unresolved= badyaml= notype= stale= orphan= collision= unindexed=
-         missingfield= deadend= staleptr= chain= external= extmissing=
+         missingfield= deadend= staleptr= chain= external= extmissing= untracked=
 """
 import datetime
 import os
@@ -24,6 +31,10 @@ cfg = wikilib.load_config(KB)
 STALE_DAYS = int(os.environ.get("STALE_DAYS", cfg["stale_days"]))
 os.chdir(KB)
 files = wikilib.git_files(KB)
+# Every path git knows about, not just pages: a link target that exists on disk but is
+# untracked is present for the author and absent for every clone, and search and the graph
+# (both built from git ls-files) cannot see it either.
+tracked = set(wikilib.git_files(KB, "*"))
 today = datetime.date.today()
 
 landmarks = set(cfg["landmark_files"])
@@ -46,7 +57,7 @@ fence = re.compile(r"^\s*(```|~~~)")
 keyline = re.compile(r"^([A-Za-z_][\w-]*):[ \t]*(.*)$")
 issues, linked = [], set()
 broken = unresolved = notype = stale = orphan = badyaml = collision = unindexed = 0
-missingfield = deadend = staleptr = chain = external = extmissing = 0
+missingfield = deadend = staleptr = chain = external = extmissing = untracked = 0
 
 content_dirs = tuple(cfg["content_dirs"])
 collision_stop = {s.lower() for s in cfg["collision_exempt"]}
@@ -147,6 +158,10 @@ for f in files:
             if t.endswith(".md"):
                 out_md[f] = out_md.get(f, 0) + 1
             if os.path.exists(tgt):
+                if not raw_layer and tgt not in tracked and not os.path.isdir(tgt):
+                    issues.append(f"  UNTRACKED {f} -> {t} (exists here but is not in git; "
+                                  f"absent from every clone, and invisible to search)")
+                    untracked += 1
                 linked.add(tgt)
                 page_targets.setdefault(f, set()).add(tgt)
                 if is_index:
@@ -254,4 +269,4 @@ for line in issues:
 print(f"CORE broken={broken} unresolved={unresolved} badyaml={badyaml} notype={notype} "
       f"stale={stale} orphan={orphan} collision={collision} unindexed={unindexed} "
       f"missingfield={missingfield} deadend={deadend} staleptr={staleptr} chain={chain} "
-      f"external={external} extmissing={extmissing}")
+      f"external={external} extmissing={extmissing} untracked={untracked}")
