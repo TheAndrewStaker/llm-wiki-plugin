@@ -3,12 +3,13 @@
 type: frontmatter, commit-gate tokens, stale timestamps, orphan pages, title/alias
 collisions (two pages claiming the same name), pages missing from their dir's index.md,
 per-type required frontmatter fields, dead-end pages (no outgoing wiki links), live
-pages linking a superseded page, and superseded pages chaining to superseded pages.
+pages linking a superseded page, superseded pages chaining to superseded pages, and
+links whose target sits outside the wiki root (counted, never gated -- see below).
 Always exits 0; lint.sh decides the gate.
 Standalone: python3 hooks/lint-core.py [WIKI_ROOT]
 Ends with a machine line (all counts on one line):
     CORE broken= unresolved= badyaml= notype= stale= orphan= collision= unindexed=
-         missingfield= deadend= staleptr= chain=
+         missingfield= deadend= staleptr= chain= external= extmissing=
 """
 import datetime
 import os
@@ -45,7 +46,7 @@ fence = re.compile(r"^\s*(```|~~~)")
 keyline = re.compile(r"^([A-Za-z_][\w-]*):[ \t]*(.*)$")
 issues, linked = [], set()
 broken = unresolved = notype = stale = orphan = badyaml = collision = unindexed = 0
-missingfield = deadend = staleptr = chain = 0
+missingfield = deadend = staleptr = chain = external = extmissing = 0
 
 content_dirs = tuple(cfg["content_dirs"])
 collision_stop = {s.lower() for s in cfg["collision_exempt"]}
@@ -128,9 +129,23 @@ for f in files:
             t = parts[0].split("#")[0]
             if not t or t.startswith(("http://", "https://", "mailto:", "tel:", "ftp:")):
                 continue
+            tgt = t.lstrip("/") if t.startswith("/") else os.path.normpath(os.path.join(d, t)).replace(os.sep, "/")
+            if tgt.startswith("../"):
+                # Target sits outside the wiki root, so whether it resolves is decided by a
+                # sibling repo's checked-out branch, or by whether this machine cloned that
+                # repo at all. Gating on that makes the commit gate non-deterministic: the
+                # same commit passes here and fails there. Counted, never gated, and kept out
+                # of `linked`/`page_targets`/`out_md` so no other check inherits the variance.
+                # `external` derives from content alone; `extmissing` is only this filesystem's
+                # answer right now, which is why it is advisory.
+                if not raw_layer:
+                    external += 1
+                    if not os.path.exists(tgt):
+                        issues.append(f"  EXTERNAL {f} -> {t} (outside the wiki root; absent here, so unverifiable)")
+                        extmissing += 1
+                continue
             if t.endswith(".md"):
                 out_md[f] = out_md.get(f, 0) + 1
-            tgt = t.lstrip("/") if t.startswith("/") else os.path.normpath(os.path.join(d, t)).replace(os.sep, "/")
             if os.path.exists(tgt):
                 linked.add(tgt)
                 page_targets.setdefault(f, set()).add(tgt)
@@ -238,4 +253,5 @@ for line in issues:
     print(line)
 print(f"CORE broken={broken} unresolved={unresolved} badyaml={badyaml} notype={notype} "
       f"stale={stale} orphan={orphan} collision={collision} unindexed={unindexed} "
-      f"missingfield={missingfield} deadend={deadend} staleptr={staleptr} chain={chain}")
+      f"missingfield={missingfield} deadend={deadend} staleptr={staleptr} chain={chain} "
+      f"external={external} extmissing={extmissing}")

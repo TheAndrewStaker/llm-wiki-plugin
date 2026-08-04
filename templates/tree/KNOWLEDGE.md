@@ -86,7 +86,12 @@ links to the pages used); **file good answers back as pages** so explorations co
 commit-gate tokens, stale dates, title/alias collisions (two pages claiming one name), pages missing
 from their dir's `index.md`, per-type required frontmatter (`type_requirements` in `wiki.config.json`),
 dead-end pages (no outgoing wiki links), and supersede hygiene (live links to superseded pages; superseded
-chains). Two more advisories are opt-in (disabled by default, both 0, in `wiki.config.json`): an Inbox
+chains). **Link checking stops at the wiki root:** a target resolving outside it counts as `external`,
+never as broken, because another repo's checked-out branch would otherwise decide whether this wiki's
+commit passes. The summary reads `external:<leaving>/<absent here>`; the first number comes from content,
+the second only from this filesystem, so only the first is reproducible. Prefer an `external-pointer` page
+for a cross-repo reference you rely on; `advisory_budgets.external_missing` gates anyway if every sibling
+is guaranteed present. Two more advisories are opt-in (disabled by default, both 0, in `wiki.config.json`): an Inbox
 soft-cap (`hooks/inbox-check.py`, flags STATE.md's `## Inbox` growing past a configured item/word count)
 and timestamp-drift (`hooks/timestamp-drift.py`, flags a page whose last real git edit is newer than its
 declared `reviewed:`/`timestamp:` by more than a configured number of days). Frontmatter is also linted to

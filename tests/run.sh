@@ -797,6 +797,52 @@ bash "$H/lint.sh" "$W" >/dev/null 2>&1
 assert "a wiki page with the same broken link still fails" "1" "$?"
 git -C "$W" rm -qf notes/badlink.md sources/captured.md >/dev/null 2>&1
 
+echo "--- links that leave the wiki are counted, never gated ---"
+# The target belongs to another repo, so whether it resolves depends on that repo's
+# checked-out branch, or on whether this machine cloned it at all. A gate that reads it
+# gives the same commit different verdicts on different machines.
+SIB="$(dirname "$W")/sibling"
+printf -- '---\ntype: notes\ntitle: ext\n---\nSee [the sibling doc](../../sibling/doc.md).\n' \
+  > "$W/notes/extlink.md"
+git -C "$W" add -A >/dev/null 2>&1
+core=$(python3 "$H/lint-core.py" "$W")
+assert_contains "an absent cross-repo target is not a broken link" "broken=0" "$core"
+assert_contains "it is counted as a link leaving the wiki" "external=1" "$core"
+assert_contains "and as one this filesystem cannot answer for" "extmissing=1" "$core"
+assert_contains "the advisory names the target" \
+  "EXTERNAL notes/extlink.md -> ../../sibling/doc.md" "$core"
+bash "$H/lint.sh" "$W" >/dev/null 2>&1
+assert "the gate passes with the sibling absent" "0" "$?"
+# the raw layer stays out of the count entirely, as it does for broken links
+printf -- '# Captured\n\n[up and out](../../elsewhere/x.md)\n' > "$W/sources/escaping.md"
+git -C "$W" add -A >/dev/null 2>&1
+assert_contains "a raw-layer page adds no external count" "external=1" \
+  "$(python3 "$H/lint-core.py" "$W")"
+git -C "$W" rm -qf sources/escaping.md >/dev/null 2>&1
+
+mkdir -p "$SIB"; printf 'doc\n' > "$SIB/doc.md"
+core=$(python3 "$H/lint-core.py" "$W")
+assert_contains "the count is the same once the sibling exists" "external=1" "$core"
+assert_contains "and nothing is reported unverifiable" "extmissing=0" "$core"
+bash "$H/lint.sh" "$W" >/dev/null 2>&1
+assert "the gate passes with the sibling present" "0" "$?"
+rm -rf "$SIB"
+bash "$H/lint.sh" "$W" >/dev/null 2>&1
+assert "the verdict does not move when the sibling disappears" "0" "$?"
+
+# a wiki whose siblings are always present can opt the gate back in
+printf '{"advisory_budgets":{"external_missing":0}}\n' > "$W/wiki.config.json"
+bash "$H/lint.sh" "$W" >/dev/null 2>&1
+assert "advisory_budgets.external_missing re-arms the gate" "1" "$?"
+rm "$W/wiki.config.json"
+
+# and the gate on the wiki's own links is untouched
+printf -- '---\ntype: notes\ntitle: n\n---\n[gone](../concepts/missing.md)\n' > "$W/notes/badlink.md"
+git -C "$W" add -A >/dev/null 2>&1
+assert_contains "a link inside the wiki still breaks the gate" "broken=1" \
+  "$(python3 "$H/lint-core.py" "$W")"
+git -C "$W" rm -qf notes/badlink.md notes/extlink.md >/dev/null 2>&1
+
 echo "--- link-mentions: fixes what missed-links reports, and leaves quotes alone ---"
 LM="$(mktemp -d)/wiki"
 mkdir -p "$LM"/{entities,analyses,sources}

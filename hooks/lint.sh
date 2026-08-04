@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Deterministic knowledge-base lint (fast, single-pass Python). Pre-commit-gated + run on demand.
 # Hard-fails on broken links or unresolved commit-gate tokens; orphans / islands / missed-links /
-# no-type / stale / collisions / unindexed / inbox soft-cap / timestamp-drift are advisory.
+# no-type / stale / collisions / unindexed / inbox soft-cap / timestamp-drift / external are advisory.
+# "external" is advisory by necessity: those targets live outside the wiki root, so gating them
+# would hand the verdict to an unrelated repo's working tree. A wiki whose siblings are always
+# present can opt back in with advisory_budgets.external_missing.
 # Source-freshness (stale-source.py) is a separate triggered tool.
 set -uo pipefail
 
@@ -70,7 +73,9 @@ unx=$(printf '%s\n' "$core"  | sed -n 's/.* unindexed=\([0-9]*\).*/\1/p')
 mf=$(printf '%s\n' "$core"   | sed -n 's/.* missingfield=\([0-9]*\).*/\1/p')
 de=$(printf '%s\n' "$core"   | sed -n 's/.* deadend=\([0-9]*\).*/\1/p')
 sp=$(printf '%s\n' "$core"   | sed -n 's/.* staleptr=\([0-9]*\).*/\1/p')
-ch=$(printf '%s\n' "$core"   | sed -n 's/.* chain=\([0-9]*\)$/\1/p')
+ch=$(printf '%s\n' "$core"   | sed -n 's/.* chain=\([0-9]*\).*/\1/p')
+ex=$(printf '%s\n' "$core"   | sed -n 's/.* external=\([0-9]*\).*/\1/p')
+em=$(printf '%s\n' "$core"   | sed -n 's/.* extmissing=\([0-9]*\)$/\1/p')
 islands=$(printf '%s\n' "$graph"  | sed -n 's/^COMPONENTS=[0-9]* ISLAND_NODES=//p')
 ml=$(printf '%s\n' "$missed" | sed -n 's/^MISSED_LINKS=//p')
 wp=$(printf '%s\n' "$wanted" | sed -n 's/^WANTED=\([0-9]*\).*/\1/p')
@@ -83,7 +88,7 @@ pa=$(printf '%s\n' "$port"   | sed -n 's/.* ambig=\([0-9]*\).*/\1/p')
 pd=$(printf '%s\n' "$port"   | sed -n 's/.* desc=\([0-9]*\).*/\1/p')
 ng=$(printf '%s\n' "$neigh"  | sed -n 's/^NEIGHBORS=//p')
 
-echo "${C}== summary ==${Z}  broken-links:${b:-?}  unresolved:${u:-?}  bad-yaml:${by:-?}  orphans:${orp:-?}  islands:${islands:-?}  missed-links:${ml:-?}  no-type:${nt:-?}  stale:${st:-?}  collisions:${col:-?}  unindexed:${unx:-?}  missing-fields:${mf:-?}  dead-ends:${de:-?}  stale-pointers:${sp:-?}  chains:${ch:-?}  wanted:${wp:-?}  inbox:${ib:-?}  drift:${dr:-?}  dup-keys:${dk:-?}  fm-tabs:${tb:-?}  ambig-yaml:${pa:-?}  desc-quality:${pd:-?}  neighbors:${ng:-?}  vendor:${vn:-?}"
+echo "${C}== summary ==${Z}  broken-links:${b:-?}  external:${ex:-?}/${em:-?}  unresolved:${u:-?}  bad-yaml:${by:-?}  orphans:${orp:-?}  islands:${islands:-?}  missed-links:${ml:-?}  no-type:${nt:-?}  stale:${st:-?}  collisions:${col:-?}  unindexed:${unx:-?}  missing-fields:${mf:-?}  dead-ends:${de:-?}  stale-pointers:${sp:-?}  chains:${ch:-?}  wanted:${wp:-?}  inbox:${ib:-?}  drift:${dr:-?}  dup-keys:${dk:-?}  fm-tabs:${tb:-?}  ambig-yaml:${pa:-?}  desc-quality:${pd:-?}  neighbors:${ng:-?}  vendor:${vn:-?}"
 # If the gate counters didn't parse, the CORE line is malformed -> fail closed, don't pass blind.
 if [ -z "$b" ] || [ -z "$u" ] || [ -z "$by" ]; then
   echo "${R}FAIL${Z} (could not read lint-core counts; failing closed)"; exit 2
@@ -96,10 +101,10 @@ fi
 if [ -n "${dk:-}" ] && [ -n "${tb:-}" ] && { [ "$dk" -gt 0 ] || [ "$tb" -gt 0 ]; }; then
   echo "${R}FAIL${Z} (duplicate frontmatter keys or tab indentation -- parsers silently drop data)"; exit 1
 fi
-budget_report=$(python3 - "$KB" "${orp:--1}" "${islands:--1}" "${ml:--1}" "${col:--1}" "${unx:--1}" "${de:--1}" <<'PY'
+budget_report=$(python3 - "$KB" "${orp:--1}" "${islands:--1}" "${ml:--1}" "${col:--1}" "${unx:--1}" "${de:--1}" "${em:--1}" <<'PY'
 import json, os, sys
 root, values = sys.argv[1], sys.argv[2:]
-names = ("orphan", "islands", "missed_links", "collision", "unindexed", "deadend")
+names = ("orphan", "islands", "missed_links", "collision", "unindexed", "deadend", "external_missing")
 try:
     cfg = json.load(open(os.path.join(root, "wiki.config.json"), encoding="utf-8"))
 except (FileNotFoundError, ValueError, OSError):
