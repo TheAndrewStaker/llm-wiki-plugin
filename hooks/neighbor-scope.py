@@ -70,9 +70,19 @@ else:
         diff_args = ["diff", "-w", "HEAD~1..HEAD"]
 changed = set(changed)
 
-# A value worth re-checking elsewhere: figures, ids, dates, SHAs. Bare 1-2 digit numbers
-# match everything and carry nothing, so require some length or structure.
-VALUE = re.compile(r"#\d+|\b[0-9a-f]{7,40}\b|\b\d[\d,.]{2,}[A-Za-z%]*\b|\b\d{4}-\d{2}-\d{2}\b")
+# A value worth re-checking elsewhere: figures, ids, dates, SHAs. Structure is what makes
+# one distinctive, so require punctuation, a unit suffix, a # or a full date. A bare run of
+# digits carries nothing on its own, and a bare year carries less than nothing: "2026"
+# appears on almost every page, so admitting it would mark the whole wiki as restating.
+VALUE = re.compile(
+    r"#\d+"                      # PR / issue
+    r"|\b[0-9a-f]{7,40}\b"       # SHA
+    r"|\b\d{4}-\d{2}-\d{2}\b"    # ISO date
+    r"|\b\d[\d,]*\.\d+[A-Za-z%]*\b"  # decimal, optionally suffixed
+    r"|\b\d[\d,]*,\d{3}[A-Za-z%]*\b"  # thousands-separated
+    r"|\b\d+[A-Za-z%]+\b"        # 4B, 75th, 20%
+)
+YEAR = re.compile(r"^(19|20)\d{2}$")
 
 
 def body_changes(page):
@@ -96,7 +106,7 @@ def body_changes(page):
             continue
         if payload.strip():
             substantive = True
-            touched.update(VALUE.findall(payload))
+            touched.update(v for v in VALUE.findall(payload) if not YEAR.match(v))
     return touched if substantive else None
 
 

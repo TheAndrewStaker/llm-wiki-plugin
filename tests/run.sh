@@ -710,6 +710,18 @@ assert_contains "the page built from it is SYNTHESIS" "analyses/synth.md links e
 assert_contains "the see-also page is only MENTIONS" "analyses/pointer.md links entities/widget-platform.md (MENTIONS)" "$out"
 assert "RESTATES is ranked first so the cap keeps it" "analyses/restater.md" \
   "$(printf '%s\n' "$out" | head -1 | awk '{print $2}')"
+# a bare year is on nearly every page; admitting it would mark the whole wiki as restating
+printf -- '---\ntype: analysis\ntitle: Yearly\ntimestamp: 2026-01-01\nsynthesized_from: ../sources/s.md\n---\nIn 2026 the [platform](../entities/widget-platform.md) shipped.\n' \
+  > "$NS/analyses/yearly.md"
+python3 - "$NS" <<'PYEOF'
+import sys
+p = sys.argv[1] + "/entities/widget-platform.md"
+open(p, "w").write(open(p).read().replace("It processes", "In 2026 it processes"))
+PYEOF
+git -C "$NS" add -A
+yr=$(python3 "$H/neighbor-scope.py" "$NS")
+assert "a bare year is not treated as a restated value" "0" \
+  "$(printf '%s\n' "$yr" | grep -c 'RESTATES 2026')"
 rm -rf "$(dirname "$NS")"
 
 echo "--- wiki-links: the backlink direction markdown does not give you ---"
