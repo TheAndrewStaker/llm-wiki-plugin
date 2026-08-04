@@ -424,10 +424,7 @@ T="$(mktemp -d)/fresh"
 mkdir -p "$T"
 cp -R "$ROOT/templates/tree/." "$T/"
 mv "$T/gitignore" "$T/.gitignore"
-mkdir -p "$T/hooks"
-for f in lint.sh lint-core.py graph-check.py missed-links.py stale-source.py reflect-scope.py rewrite-links.py wanted-pages.py inbox-check.py timestamp-drift.py wikilib.py pre-commit; do
-  cp "$ROOT/hooks/$f" "$T/hooks/"
-done
+python3 "$ROOT/bin/wiki-vendor" --install "$T" >/dev/null
 git -C "$T" init -q
 git -C "$T" config core.hooksPath hooks
 git -C "$T" add -A
@@ -660,6 +657,35 @@ printf '{}\n' | WIKI_ROOT="$AUTO_TMP" bash "$H/auto-commit.sh" >/dev/null 2>&1
 assert "clean tree clears a resolved-by-hand failure breadcrumb" "no" \
   "$([ -e "$AUTO_TMP/.auto-commit-failed" ] && echo yes || echo no)"
 rm -rf "$AUTO_TMP"
+
+echo "--- vendored engine: the manifest is current, and drift is visible ---"
+assert "the committed manifest matches the tree" "0" \
+  "$(python3 "$ROOT/bin/wiki-vendor" --check >/dev/null 2>&1; echo $?)"
+VD="$(mktemp -d)/w"
+mkdir -p "$VD"/{entities,concepts,notes,analyses,sources}
+printf -- '---\ntype: notes\ntitle: t\n---\nbody\n' > "$VD/notes/a.md"
+git -C "$VD" init -q 2>/dev/null || (mkdir -p "$VD" && git -C "$VD" init -q)
+git -C "$VD" add -A
+git -C "$VD" -c user.name=t -c user.email=t@t commit -qm c1
+python3 "$ROOT/bin/wiki-vendor" --install "$VD" >/dev/null
+assert "a fresh install reports no drift" "VENDOR=0/0/ok" \
+  "$(python3 "$VD/hooks/vendor-check.py" "$VD" | tail -1)"
+assert "wiki-links is vendored too" "yes" \
+  "$([ -f "$VD/bin/wiki-links" ] && echo yes || echo no)"
+# the partial-copy case: a checker the manifest promises is simply absent
+rm "$VD/hooks/graph-check.py"
+vc=$(python3 "$VD/hooks/vendor-check.py" "$VD")
+assert_contains "a missing vendored file is named" "VENDOR-MISSING hooks/graph-check.py" "$vc"
+assert "and counted" "VENDOR=1/0/drift" "$(printf '%s\n' "$vc" | tail -1)"
+bash "$VD/hooks/lint.sh" "$VD" >/dev/null 2>&1
+assert "lint refuses to run rather than printing a '?' counter" "2" "$?"
+python3 "$ROOT/bin/wiki-vendor" --install "$VD" >/dev/null
+printf '\n# local edit\n' >> "$VD/hooks/wikilib.py"
+assert "a locally edited vendored file is flagged" "VENDOR=0/1/drift" \
+  "$(python3 "$VD/hooks/vendor-check.py" "$VD" | tail -1)"
+assert "a wiki with no manifest is not an error" "VENDOR=-" \
+  "$(rm "$VD/hooks/VENDOR.manifest"; python3 "$VD/hooks/vendor-check.py" "$VD" | tail -1)"
+rm -rf "$(dirname "$VD")"
 
 echo "--- neighbor-scope: cosmetic edits stay silent, and each nudge says why ---"
 NS="$(mktemp -d)/wiki"

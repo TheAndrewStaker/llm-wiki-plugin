@@ -40,14 +40,21 @@ Set `auto_commit: false` for a `shared-wiki` unless its maintainers explicitly a
 commits. Keep `auto_push: false` unless the user explicitly opts into network writes.
 
 ## Step 4 — Install the wiki's own lint + search scripts
-Copy `${CLAUDE_PLUGIN_ROOT}/hooks/`{lint.sh, lint-core.py, graph-check.py, missed-links.py, stale-source.py,
-reflect-scope.py, rewrite-links.py, wanted-pages.py, inbox-check.py, timestamp-drift.py, wikilib.py,
-stage-source.py, frontmatter-portability.py, neighbor-scope.py, pre-commit} into `<wiki>/hooks/`, and `${CLAUDE_PLUGIN_ROOT}/bin/`{wiki-query, wiki-eval,
-wiki-okf} into `<wiki>/bin/` (`mkdir -p <wiki>/bin` first). This makes the wiki self-contained: a bare clone
-lints AND searches without the plugin. Always invoke search as `python3 "<wiki>/bin/wiki-query" <terms>`,
-never bare `wiki-query`: the script's `#!/usr/bin/env python3` shebang is not exec-able on every host (some
-Python launchers cannot be run through `env`), so the plugin always calls the interpreter explicitly. These
-copies are STATIC: after a plugin update, re-run wiki-setup to refresh them (no automatic re-sync yet).
+Run `python3 "${CLAUDE_PLUGIN_ROOT}/bin/wiki-vendor" --install <wiki>`. It copies the deterministic
+engine into `<wiki>/hooks/` and the CLIs into `<wiki>/bin/`, and writes `hooks/VENDOR.manifest`
+recording the plugin version and a hash per file. This makes the wiki self-contained: a bare clone
+lints AND searches with no plugin installed.
+
+Do not hand-list the files. The set is derived by `wiki-vendor` from the plugin tree, because a list
+maintained in prose here goes stale the first time a hook is added, and a wiki missing one checker
+reports `?` for its counter rather than failing. `vendor-check.py` reports a missing, modified or
+out-of-date copy on every lint, and `lint.sh` refuses to run at all if a checker it calls is absent.
+
+Always invoke search as `python3 "<wiki>/bin/wiki-query" <terms>`, never bare `wiki-query`: the
+`#!/usr/bin/env python3` shebang is not exec-able on every host (some Python launchers cannot be run
+through `env`), so the plugin always calls the interpreter explicitly.
+
+To refresh after a plugin update, re-run the same command.
 
 ## Step 5 — OFFER git + the gate (confirm)
 Offer, don't assume: `git init` (if not already a repo), `git config core.hooksPath hooks`, and make the

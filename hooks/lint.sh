@@ -17,6 +17,19 @@ if [ -t 1 ]; then C=$'\033[36m'; R=$'\033[31m'; G=$'\033[32m'; Z=$'\033[0m'; els
 # lint-core is the GATE (broken links + unresolved tokens). If it crashes we cannot trust the
 # counts, so FAIL CLOSED (show the error, exit 2) instead of silently passing. graph/missed are
 # advisory: a crash there warns but never blocks.
+# An ABSENT checker is not an advisory that happened to print nothing: its counter would
+# read "?" and the run would look complete. A partial vendored copy did exactly that.
+missing_checkers=""
+for c in lint-core.py graph-check.py missed-links.py wanted-pages.py inbox-check.py \
+         timestamp-drift.py frontmatter-portability.py neighbor-scope.py vendor-check.py; do
+  [ -f "$H/$c" ] || missing_checkers="${missing_checkers:+$missing_checkers }$c"
+done
+if [ -n "$missing_checkers" ]; then
+  echo "${R}FAIL${Z} (checkers missing from $H: $missing_checkers)" >&2
+  echo "refresh the vendored engine: bin/wiki-vendor --install \"$KB\"" >&2
+  exit 2
+fi
+
 core_err=$(mktemp)
 core=$(python3 "$H/lint-core.py" "$KB" 2>"$core_err")
 core_rc=$?
@@ -27,6 +40,7 @@ inbox=$(python3 "$H/inbox-check.py" "$KB" 2>/dev/null || true)
 drift=$(python3 "$H/timestamp-drift.py" "$KB" 2>/dev/null || true)
 port=$(python3 "$H/frontmatter-portability.py" "$KB" 2>/dev/null || true)
 neigh=$(python3 "$H/neighbor-scope.py" "$KB" 2>/dev/null || true)
+vendor=$(python3 "$H/vendor-check.py" "$KB" 2>/dev/null || true)
 
 echo "${C}== knowledge-base lint ==${Z}"
 if [ "$core_rc" -ne 0 ]; then
@@ -43,6 +57,7 @@ printf '%s\n' "$inbox"  | grep '^  INBOX-' || true
 printf '%s\n' "$drift"  | grep '^  DRIFT' || true
 printf '%s\n' "$port"   | grep '^  PORT-' || true
 printf '%s\n' "$neigh"  | grep '^  NEIGHBOR' || true
+printf '%s\n' "$vendor" | grep '^  VENDOR-' || true
 
 b=$(printf '%s\n'  "$core"   | sed -n 's/^CORE broken=\([0-9]*\).*/\1/p')
 u=$(printf '%s\n'  "$core"   | sed -n 's/^CORE [^ ]* unresolved=\([0-9]*\).*/\1/p')
@@ -61,13 +76,14 @@ ml=$(printf '%s\n' "$missed" | sed -n 's/^MISSED_LINKS=//p')
 wp=$(printf '%s\n' "$wanted" | sed -n 's/^WANTED=\([0-9]*\).*/\1/p')
 ib=$(printf '%s\n' "$inbox"  | sed -n 's/^INBOX=//p')
 dr=$(printf '%s\n' "$drift"  | sed -n 's/^DRIFT=\([0-9]*\).*/\1/p')
+vn=$(printf '%s\n' "$vendor" | sed -n 's/^VENDOR=//p')
 dk=$(printf '%s\n' "$port"   | sed -n 's/^PORT dupkey=\([0-9]*\).*/\1/p')
 tb=$(printf '%s\n' "$port"   | sed -n 's/^PORT [^ ]* tab=\([0-9]*\).*/\1/p')
 pa=$(printf '%s\n' "$port"   | sed -n 's/.* ambig=\([0-9]*\).*/\1/p')
 pd=$(printf '%s\n' "$port"   | sed -n 's/.* desc=\([0-9]*\).*/\1/p')
 ng=$(printf '%s\n' "$neigh"  | sed -n 's/^NEIGHBORS=//p')
 
-echo "${C}== summary ==${Z}  broken-links:${b:-?}  unresolved:${u:-?}  bad-yaml:${by:-?}  orphans:${orp:-?}  islands:${islands:-?}  missed-links:${ml:-?}  no-type:${nt:-?}  stale:${st:-?}  collisions:${col:-?}  unindexed:${unx:-?}  missing-fields:${mf:-?}  dead-ends:${de:-?}  stale-pointers:${sp:-?}  chains:${ch:-?}  wanted:${wp:-?}  inbox:${ib:-?}  drift:${dr:-?}  dup-keys:${dk:-?}  fm-tabs:${tb:-?}  ambig-yaml:${pa:-?}  desc-quality:${pd:-?}  neighbors:${ng:-?}"
+echo "${C}== summary ==${Z}  broken-links:${b:-?}  unresolved:${u:-?}  bad-yaml:${by:-?}  orphans:${orp:-?}  islands:${islands:-?}  missed-links:${ml:-?}  no-type:${nt:-?}  stale:${st:-?}  collisions:${col:-?}  unindexed:${unx:-?}  missing-fields:${mf:-?}  dead-ends:${de:-?}  stale-pointers:${sp:-?}  chains:${ch:-?}  wanted:${wp:-?}  inbox:${ib:-?}  drift:${dr:-?}  dup-keys:${dk:-?}  fm-tabs:${tb:-?}  ambig-yaml:${pa:-?}  desc-quality:${pd:-?}  neighbors:${ng:-?}  vendor:${vn:-?}"
 # If the gate counters didn't parse, the CORE line is malformed -> fail closed, don't pass blind.
 if [ -z "$b" ] || [ -z "$u" ] || [ -z "$by" ]; then
   echo "${R}FAIL${Z} (could not read lint-core counts; failing closed)"; exit 2
