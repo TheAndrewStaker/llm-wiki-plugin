@@ -992,6 +992,32 @@ assert_contains "the fat item is named" "INBOX-FAT" "$fatout"
 assert "under-cap totals do not report as over" "0" "$(printf '%s\n' "$fatout" | grep -c 'items=2 max=15, words=8[0-9][0-9]')"
 printf '{"inbox_soft_max_items": 15, "inbox_soft_max_words": 800}\n' > "$IB/wiki.config.json"
 assert "item cap off means no INBOX-FAT" "0" "$(python3 "$H/inbox-check.py" "$IB" | grep -c 'INBOX-FAT')"
+
+echo "--- inbox: an entry appended to the end of the FILE is not in the Inbox ---"
+# "append one line to STATE.md" resolves to "append at the end" for an agent that never
+# located the heading, so entries land in whatever section is last. The size caps cannot
+# see it: the section they measure stays small and reads clean while the handoff grows.
+{ printf -- '---\ntype: state\ntitle: s\n---\n## Inbox\n'
+  printf -- '- [2026-01-02 · session] a properly filed pointer\n'
+  printf -- '## Anchors\n'
+  printf -- '- a stable pointer that is not an inbox entry\n'
+  printf -- '- [2026-01-03 · session] a find appended to the end of the file\n'; } > "$IB/STATE.md"
+mis=$(python3 "$H/inbox-check.py" "$IB")
+assert "a misfiled entry trips the advisory" "INBOX=OVER" "$(printf '%s\n' "$mis" | tail -1)"
+assert_contains "it names the section it landed in" "under: Anchors" "$mis"
+assert_contains "it says where the entry should have gone" "not at the end of the file" "$mis"
+assert_contains "it quotes the misfiled entry" "a find appended to the end of the file" "$mis"
+assert "an undated bullet elsewhere is not an inbox entry" "0" \
+  "$(printf '%s\n' "$mis" | grep -c 'a stable pointer')"
+assert "the entry inside the Inbox is not counted" "0" \
+  "$(printf '%s\n' "$mis" | grep -c 'a properly filed pointer')"
+# no size cap is breached, so the caps alone would call this file clean
+assert "the size caps see nothing wrong" "0" "$(printf '%s\n' "$mis" | grep -c 'INBOX-OVER')"
+{ printf -- '---\ntype: state\ntitle: s\n---\n## Inbox\n'
+  printf -- '- [2026-01-02 · session] a properly filed pointer\n'
+  printf -- '## Anchors\n- a stable pointer\n'; } > "$IB/STATE.md"
+assert "everything in its place stays OK" "INBOX=OK" \
+  "$(python3 "$H/inbox-check.py" "$IB" | tail -1)"
 rm -rf "$IB"
 
 echo "--- one corpus definition for the graph and for search ---"

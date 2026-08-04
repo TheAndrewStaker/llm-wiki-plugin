@@ -15,6 +15,9 @@ anything blocked. Keep it SHORT — move detail into `initiatives/` as it lands.
 ## Inbox (unsorted — any session APPENDS one line; do not edit others' lines)
 _Triaged into Focus (now) / Up next (near-term) / ROADMAP (long) / the right initiatives file._
 _Line format:_ `- [YYYY-MM-DD · source] item — proposed horizon · detail → [file](path)`
+_Append under THIS heading. The end of the FILE is a different section, and that is where misfiled
+entries pile up; the lint reports them as INBOX-MISFILED._
+_One line: the body goes on the page it belongs to, and this is the pointer, not the report._
 _On a shared/multi-machine wiki, append here rather than editing the Focus block, so machines don't
 conflict on the handoff._
 
