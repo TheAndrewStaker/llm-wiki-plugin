@@ -661,6 +661,85 @@ assert "clean tree clears a resolved-by-hand failure breadcrumb" "no" \
   "$([ -e "$AUTO_TMP/.auto-commit-failed" ] && echo yes || echo no)"
 rm -rf "$AUTO_TMP"
 
+echo "--- neighbor-scope: cosmetic edits stay silent, and each nudge says why ---"
+NS="$(mktemp -d)/wiki"
+mkdir -p "$NS"/{entities,analyses,sources}
+printf -- '---\ntype: entity\ntitle: Widget Platform\ndescription: d\n---\nIt processes 4.19B rates.\n' \
+  > "$NS/entities/widget-platform.md"
+printf -- '---\ntype: analysis\ntitle: Restater\ntimestamp: 2026-01-01\nsynthesized_from: ../sources/s.md\n---\nThe [platform](../entities/widget-platform.md) reports 4.19B rates.\n' \
+  > "$NS/analyses/restater.md"
+printf -- '---\ntype: analysis\ntitle: Synth\ntimestamp: 2026-01-01\nsynthesized_from: ../entities/widget-platform.md\n---\nBuilt from the [platform](../entities/widget-platform.md).\n' \
+  > "$NS/analyses/synth.md"
+printf -- '---\ntype: analysis\ntitle: Pointer\ntimestamp: 2026-01-01\nsynthesized_from: ../sources/s.md\n---\nSee the [platform](../entities/widget-platform.md).\n' \
+  > "$NS/analyses/pointer.md"
+printf 'src\n' > "$NS/sources/s.md"
+git -C "$NS" init -q
+git -C "$NS" add -A
+git -C "$NS" -c user.name=t -c user.email=t@t commit -qm c1
+
+# frontmatter-only change is not a claim change
+python3 - "$NS" <<'PYEOF'
+import sys
+p = sys.argv[1] + "/entities/widget-platform.md"
+s = open(p).read().replace("type: entity", "type: entity\ntags: [x]", 1)
+open(p, "w").write(s)
+PYEOF
+git -C "$NS" add -A
+assert "a frontmatter-only edit does not nudge" "NEIGHBORS=0" \
+  "$(python3 "$H/neighbor-scope.py" "$NS" | tail -1)"
+git -C "$NS" checkout -- . ; git -C "$NS" reset -q
+
+# whitespace-only change is not a claim change
+printf '\n\n' >> "$NS/entities/widget-platform.md"
+git -C "$NS" add -A
+assert "a whitespace-only edit does not nudge" "NEIGHBORS=0" \
+  "$(python3 "$H/neighbor-scope.py" "$NS" | tail -1)"
+git -C "$NS" checkout -- . ; git -C "$NS" reset -q
+
+# a changed figure is a claim change, and the reasons are graded
+python3 - "$NS" <<'PYEOF'
+import sys
+p = sys.argv[1] + "/entities/widget-platform.md"
+open(p, "w").write(open(p).read().replace("4.19B", "9.99B"))
+PYEOF
+git -C "$NS" add -A
+out=$(python3 "$H/neighbor-scope.py" "$NS")
+assert "a changed figure nudges all three linkers" "NEIGHBORS=3" "$(printf '%s\n' "$out" | tail -1)"
+assert_contains "the page repeating the figure is RESTATES" "analyses/restater.md links entities/widget-platform.md (RESTATES 4.19B)" "$out"
+assert_contains "the page built from it is SYNTHESIS" "analyses/synth.md links entities/widget-platform.md (SYNTHESIS" "$out"
+assert_contains "the see-also page is only MENTIONS" "analyses/pointer.md links entities/widget-platform.md (MENTIONS)" "$out"
+assert "RESTATES is ranked first so the cap keeps it" "analyses/restater.md" \
+  "$(printf '%s\n' "$out" | head -1 | awk '{print $2}')"
+rm -rf "$(dirname "$NS")"
+
+echo "--- wiki-links: the backlink direction markdown does not give you ---"
+WL="$(mktemp -d)/wiki"
+mkdir -p "$WL"/{entities,concepts,analyses}
+printf -- '---\ntype: entity\ntitle: Widget Platform\ndescription: d\n---\nSee [Gadget](../concepts/gadget.md).\n' > "$WL/entities/widget-platform.md"
+printf -- '---\ntype: concept\ntitle: Gadget\n---\nA gadget.\n' > "$WL/concepts/gadget.md"
+printf -- '---\ntype: analysis\ntitle: Report\n---\nOn [Widget Platform](../entities/widget-platform.md).\n' > "$WL/analyses/report.md"
+printf -- '---\ntype: analysis\ntitle: Second\n---\nCiting [Report](report.md).\n' > "$WL/analyses/second.md"
+git -C "$WL" init -q
+git -C "$WL" add -A
+git -C "$WL" -c user.name=t -c user.email=t@t commit -qm c1
+Q2="python3 $ROOT/bin/wiki-links"
+one=$($Q2 --root "$WL" widget-platform)
+assert_contains "an inbound link is reported" "<- analyses/report.md" "$one"
+assert_contains "an outbound link is reported" "-> concepts/gadget.md" "$one"
+assert "depth 1 finds exactly the two neighbours" "LINKS=2" "$(printf '%s\n' "$one" | tail -1)"
+two=$($Q2 --root "$WL" widget-platform --depth 2)
+assert_contains "depth 2 reaches the second-hop citer" "analyses/second.md" "$two"
+assert "an --in scan drops the outbound side" "LINKS=1" \
+  "$($Q2 --root "$WL" widget-platform --in | tail -1)"
+assert "a --type filter narrows the result" "LINKS=1" \
+  "$($Q2 --root "$WL" widget-platform --type concept | tail -1)"
+assert "a bare name resolves to the page" "LINKS=2" \
+  "$($Q2 --root "$WL" entities/widget-platform.md | tail -1)"
+assert "an unknown page is an error, not an empty answer" "2" \
+  "$($Q2 --root "$WL" nope >/dev/null 2>&1; echo $?)"
+assert_contains "--json carries the direction" '"direction": "in"' "$($Q2 --root "$WL" widget-platform --json)"
+rm -rf "$(dirname "$WL")"
+
 echo "--- the raw layer is not link-gated ---"
 # a captured web page carries origin-relative asset paths that do not exist here, and the
 # staging contract forbids editing it, so gating those would be an unfixable hard failure.

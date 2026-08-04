@@ -1,0 +1,177 @@
+#!/usr/bin/env python3
+"""wiki-links — the neighbourhood of a page. Deterministic, no model, no network.
+
+Markdown gives an agent outbound links for free: they are on the page it just read. It
+gives backlinks not at all, so "what depends on this?" costs a full-corpus scan every
+time and mostly does not get asked. This is the third retrieval operation next to search
+(wiki-query) and read: follow the graph.
+
+    wiki-links PAGE [--depth N] [--in] [--out] [--type T]... [--root DIR] [--json]
+
+PAGE is a wiki-root-relative path, or a bare page name to look up (widget, widget.md,
+concepts/widget.md all resolve). Default shows both directions at depth 1.
+
+    --depth N   follow N hops (default 1). Distance is shown per page.
+    --in/--out  restrict to backlinks / forward links. Default both.
+    --type T    keep only pages of that type: (repeatable)
+    --json      machine-readable, for a caller that wants to route on it
+
+Ends with: LINKS=<pages reached>
+"""
+import argparse
+import collections
+import json
+import os
+import re
+import subprocess
+import sys
+
+MDLINK = re.compile(r"\]\(([^)]+)\)")
+FENCE = re.compile(r"^\s*(```|~~~)")
+
+
+def resolve_root(cli):
+    if cli:
+        return os.path.expanduser(cli)
+    env = os.environ.get("CLAUDE_PLUGIN_OPTION_WIKI_ROOT") or os.environ.get("WIKI_ROOT")
+    return os.path.expanduser(env) if env else os.path.expanduser("~/wiki")
+
+
+def corpus(kb):
+    out = subprocess.run(["git", "ls-files", "*.md"], cwd=kb,
+                         capture_output=True, text=True).stdout
+    skip = ("sources/", "commands/", "skills/", "hooks/")
+    try:
+        with open(os.path.join(kb, "wiki.config.json"), encoding="utf-8") as fh:
+            cfgskip = json.load(fh).get("corpus_exclude")
+        if isinstance(cfgskip, list):
+            skip = tuple(cfgskip)
+    except (OSError, ValueError):
+        pass
+    return [f for f in out.splitlines()
+            if f and not (skip and f.startswith(skip))
+            and not (f.startswith("projects/") and "/memory/" in f)]
+
+
+def meta(kb, f):
+    try:
+        text = open(os.path.join(kb, f), encoding="utf-8", errors="replace").read()
+    except OSError:
+        return "", "", ""
+    head = text[:1200]
+    def fm(k):
+        m = re.search(r"^" + k + r":[ \t]*(.+)$", head, re.M)
+        return m.group(1).strip().strip("\"'") if m else ""
+    return fm("title") or os.path.basename(f)[:-3], fm("type"), text
+
+
+def outbound(kb, f, text):
+    d = os.path.dirname(f)
+    out, in_fence = set(), False
+    for line in text.split("\n"):
+        if FENCE.match(line):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        for m in MDLINK.finditer(re.sub(r"`[^`]*`", "", line)):
+            parts = m.group(1).split()
+            if not parts:
+                continue
+            t = parts[0].split("#")[0]
+            if not t or t.startswith(("http://", "https://", "mailto:", "tel:", "ftp:")):
+                continue
+            tgt = t.lstrip("/") if t.startswith("/") else os.path.normpath(os.path.join(d, t)).replace(os.sep, "/")
+            out.add(tgt)
+    return out
+
+
+def main():
+    ap = argparse.ArgumentParser(add_help=True)
+    ap.add_argument("page")
+    ap.add_argument("--root")
+    ap.add_argument("--depth", type=int, default=1)
+    ap.add_argument("--in", dest="inbound_only", action="store_true")
+    ap.add_argument("--out", dest="outbound_only", action="store_true")
+    ap.add_argument("--type", action="append", default=[])
+    ap.add_argument("--json", action="store_true")
+    a = ap.parse_args()
+    if a.depth < 1:
+        ap.error("--depth must be positive")
+    kb = resolve_root(a.root)
+    files = corpus(kb)
+    if not files:
+        print("LINKS=0")
+        return 0
+
+    want = a.page if a.page.endswith(".md") else a.page + ".md"
+    start = want if want in files else None
+    if start is None:
+        hits = [f for f in files if os.path.basename(f) == os.path.basename(want)]
+        if not hits:
+            hits = [f for f in files if os.path.basename(want)[:-3] in f]
+        if not hits:
+            print(f"wiki-links: no page matching {a.page!r}", file=sys.stderr)
+            return 2
+        start = sorted(hits)[0]
+
+    info, fwd = {}, {}
+    for f in files:
+        title, typ, text = meta(kb, f)
+        info[f] = (title, typ)
+        fwd[f] = outbound(kb, f, text)
+    back = collections.defaultdict(set)
+    for f, tgts in fwd.items():
+        for t in tgts:
+            if t in fwd:
+                back[t].add(f)
+
+    both = not (a.inbound_only or a.outbound_only)
+    seen = {start: (0, "start")}
+    frontier = [start]
+    for dist in range(1, a.depth + 1):
+        nxt = []
+        for cur in frontier:
+            step = set()
+            if both or a.outbound_only:
+                step |= {(t, "out") for t in fwd.get(cur, ()) if t in fwd}
+            if both or a.inbound_only:
+                step |= {(t, "in") for t in back.get(cur, ())}
+            for t, direction in step:
+                if t not in seen:
+                    seen[t] = (dist, direction)
+                    nxt.append(t)
+        frontier = nxt
+        if not frontier:
+            break
+
+    rows = [(d, direction, p, info[p][0], info[p][1])
+            for p, (d, direction) in seen.items() if p != start]
+    if a.type:
+        keep = {t.lower() for t in a.type}
+        rows = [r for r in rows if r[4].lower() in keep]
+    rows.sort(key=lambda r: (r[0], r[1], r[2]))
+
+    if a.json:
+        print(json.dumps({
+            "page": start, "title": info[start][0], "type": info[start][1],
+            "neighbors": [{"path": p, "title": t, "type": ty, "depth": d, "direction": dr}
+                          for d, dr, p, t, ty in rows],
+        }, indent=2))
+        print(f"LINKS={len(rows)}")
+        return 0
+
+    print(f"{start}  [{info[start][1] or 'page'}]  {info[start][0]}")
+    arrow = {"in": "<-", "out": "->"}
+    last = None
+    for d, direction, p, title, typ in rows:
+        if d != last:
+            print(f"\n  depth {d}")
+            last = d
+        print(f"    {arrow[direction]} {p}{f'  [{typ}]' if typ else ''}  {title}")
+    print(f"\nLINKS={len(rows)}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
