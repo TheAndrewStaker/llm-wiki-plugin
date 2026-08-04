@@ -661,6 +661,25 @@ assert "clean tree clears a resolved-by-hand failure breadcrumb" "no" \
   "$([ -e "$AUTO_TMP/.auto-commit-failed" ] && echo yes || echo no)"
 rm -rf "$AUTO_TMP"
 
+echo "--- the raw layer is not link-gated ---"
+# a captured web page carries origin-relative asset paths that do not exist here, and the
+# staging contract forbids editing it, so gating those would be an unfixable hard failure.
+printf -- '# Captured\n\n![slide](/images/talks/x/slide-01.webp?123)\n[more](/assets/deck.pdf)\n' \
+  > "$W/sources/captured.md"
+git -C "$W" add -A >/dev/null 2>&1
+core=$(python3 "$H/lint-core.py" "$W")
+assert_contains "raw-layer links do not break the gate" "broken=0" "$core"
+assert "no BROKEN LINK is reported against sources/" "0" \
+  "$(printf '%s\n' "$core" | grep -c 'BROKEN LINK sources/')"
+bash "$H/lint.sh" "$W" >/dev/null 2>&1
+assert "the gate still passes with a captured page present" "0" "$?"
+# a real page with the same bad link must still fail
+printf -- '---\ntype: notes\ntitle: n\n---\n[slide](/images/talks/x/slide-01.webp)\n' > "$W/notes/badlink.md"
+git -C "$W" add -A >/dev/null 2>&1
+bash "$H/lint.sh" "$W" >/dev/null 2>&1
+assert "a wiki page with the same broken link still fails" "1" "$?"
+git -C "$W" rm -qf notes/badlink.md sources/captured.md >/dev/null 2>&1
+
 echo "--- link-mentions: fixes what missed-links reports, and leaves quotes alone ---"
 LM="$(mktemp -d)/wiki"
 mkdir -p "$LM"/{entities,analyses,sources}

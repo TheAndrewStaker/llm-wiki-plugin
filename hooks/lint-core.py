@@ -104,6 +104,11 @@ for f in files:
         continue
     d = os.path.dirname(f)
     b = os.path.basename(f)
+    # sources/ is the immutable raw layer: its links belong to the origin document, not to
+    # this wiki, and the staging contract forbids editing it. Gating them would mean a web
+    # capture with root-relative assets blocks every commit with no legal fix. Links FROM
+    # raw sources still resolve for inbound-link purposes; only the failure is not ours.
+    raw_layer = f.startswith("sources/")
     is_index = b == "index.md" and f.startswith(content_dirs)
     if is_index:
         for cd in content_dirs:
@@ -131,7 +136,7 @@ for f in files:
                 page_targets.setdefault(f, set()).add(tgt)
                 if is_index:
                     index_targets.setdefault(f, set()).add(tgt)
-            else:
+            elif not raw_layer:
                 issues.append(f"  BROKEN LINK {f} -> {t}")
                 broken += 1
     if re.search(r"(?im)^\s*(Status:\s*Unresolved|Contradiction severity:\s*hard)", text):
