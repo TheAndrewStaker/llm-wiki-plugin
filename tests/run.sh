@@ -843,30 +843,36 @@ assert_contains "a link inside the wiki still breaks the gate" "broken=1" \
   "$(python3 "$H/lint-core.py" "$W")"
 git -C "$W" rm -qf notes/badlink.md notes/extlink.md >/dev/null 2>&1
 
-echo "--- a target git does not have is not a target the wiki has ---"
+echo "--- a target git is set to ignore is not a target the wiki has ---"
 # The mirror image of the case above: present in the author's working tree, absent from every
 # clone, and invisible to search and the graph, both of which are built from git ls-files.
 mkdir -p "$W/teamdocs"
 printf -- '---\ntype: notes\ntitle: local only\n---\nlocal\n' > "$W/teamdocs/local.md"
 printf -- '---\ntype: notes\ntitle: cites\n---\nSee [the local doc](../teamdocs/local.md).\n' \
-  > "$W/notes/cites-untracked.md"
+  > "$W/notes/cites-ignored.md"
 git -C "$W" add -A notes >/dev/null 2>&1
-core=$(python3 "$H/lint-core.py" "$W")
-assert_contains "an untracked target is not counted as broken" "broken=0" "$core"
-assert_contains "it is counted as untracked" "untracked=1" "$core"
-assert_contains "the advisory names the link" \
-  "UNTRACKED notes/cites-untracked.md -> ../teamdocs/local.md" "$core"
-bash "$H/lint.sh" "$W" >/dev/null 2>&1
-assert "untracked stays advisory by default" "0" "$?"
-printf '{"advisory_budgets":{"untracked":0}}\n' > "$W/wiki.config.json"
-bash "$H/lint.sh" "$W" >/dev/null 2>&1
-assert "advisory_budgets.untracked gates it" "1" "$?"
-rm "$W/wiki.config.json"
-# tracking the target clears it, which is the whole remedy
-git -C "$W" add -A >/dev/null 2>&1
-assert_contains "tracking the target clears the finding" "untracked=0" \
+# a target that is merely NEW is not the defect: the next commit picks it up
+assert_contains "a target that is only uncommitted is not reported" "ignored=0" \
   "$(python3 "$H/lint-core.py" "$W")"
-git -C "$W" rm -qrf notes/cites-untracked.md teamdocs >/dev/null 2>&1
+printf 'teamdocs/\n' >> "$W/.gitignore"
+git -C "$W" add -A >/dev/null 2>&1
+core=$(python3 "$H/lint-core.py" "$W")
+assert_contains "an ignored target is not counted as broken" "broken=0" "$core"
+assert_contains "it is counted as an ignored target" "ignored=1" "$core"
+assert_contains "the advisory names the link" \
+  "IGNORED-TARGET notes/cites-ignored.md -> ../teamdocs/local.md" "$core"
+bash "$H/lint.sh" "$W" >/dev/null 2>&1
+assert "ignored targets stay advisory by default" "0" "$?"
+printf '{"advisory_budgets":{"ignored_targets":0}}\n' > "$W/wiki.config.json"
+bash "$H/lint.sh" "$W" >/dev/null 2>&1
+assert "advisory_budgets.ignored_targets gates it" "1" "$?"
+rm "$W/wiki.config.json"
+# un-ignoring the target clears it, which is the whole remedy
+git -C "$W" rm -qf --cached .gitignore >/dev/null 2>&1; rm -f "$W/.gitignore"
+git -C "$W" add -A >/dev/null 2>&1
+assert_contains "un-ignoring the target clears the finding" "ignored=0" \
+  "$(python3 "$H/lint-core.py" "$W")"
+git -C "$W" rm -qrf notes/cites-ignored.md teamdocs >/dev/null 2>&1
 
 echo "--- link-mentions: fixes what missed-links reports, and leaves quotes alone ---"
 LM="$(mktemp -d)/wiki"

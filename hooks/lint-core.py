@@ -5,7 +5,7 @@ collisions (two pages claiming the same name), pages missing from their dir's in
 per-type required frontmatter fields, dead-end pages (no outgoing wiki links), live
 pages linking a superseded page, superseded pages chaining to superseded pages, and
 links whose target sits outside the wiki root (counted, never gated -- see below), and
-links to a file that exists on disk but is not tracked by git.
+links to a file that exists on disk but git is configured to ignore.
 Always exits 0; lint.sh decides the gate.
 
 Link targets are judged against git, not against the working tree, wherever the answer
@@ -16,11 +16,12 @@ the wiki that anyone else receives.
 Standalone: python3 hooks/lint-core.py [WIKI_ROOT]
 Ends with a machine line (all counts on one line):
     CORE broken= unresolved= badyaml= notype= stale= orphan= collision= unindexed=
-         missingfield= deadend= staleptr= chain= external= extmissing= untracked=
+         missingfield= deadend= staleptr= chain= external= extmissing= ignored=
 """
 import datetime
 import os
 import re
+import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -57,7 +58,7 @@ fence = re.compile(r"^\s*(```|~~~)")
 keyline = re.compile(r"^([A-Za-z_][\w-]*):[ \t]*(.*)$")
 issues, linked = [], set()
 broken = unresolved = notype = stale = orphan = badyaml = collision = unindexed = 0
-missingfield = deadend = staleptr = chain = external = extmissing = untracked = 0
+missingfield = deadend = staleptr = chain = external = extmissing = ignored = 0
 
 content_dirs = tuple(cfg["content_dirs"])
 collision_stop = {s.lower() for s in cfg["collision_exempt"]}
@@ -68,6 +69,7 @@ index_targets = {}  # index file -> set of resolved link targets
 page_targets = {}   # file -> set of resolved existing link targets
 out_md = {}         # file -> count of outgoing wiki (.md) links
 superseded = set()  # pages carrying the supersede token / superseded_by:
+ignore_candidates = {}  # existing-but-untracked link target -> [(source page, link text)]
 
 
 def content_page(f, b):
@@ -159,9 +161,11 @@ for f in files:
                 out_md[f] = out_md.get(f, 0) + 1
             if os.path.exists(tgt):
                 if not raw_layer and tgt not in tracked and not os.path.isdir(tgt):
-                    issues.append(f"  UNTRACKED {f} -> {t} (exists here but is not in git; "
-                                  f"absent from every clone, and invisible to search)")
-                    untracked += 1
+                    # Candidate only. A page written earlier this turn is untracked too, and
+                    # becomes tracked at the next commit; the defect is a target git is
+                    # configured to IGNORE, which no commit will ever pick up. Resolved in
+                    # one batch below rather than a check-ignore call per link.
+                    ignore_candidates.setdefault(tgt, []).append((f, t))
                 linked.add(tgt)
                 page_targets.setdefault(f, set()).add(tgt)
                 if is_index:
@@ -218,6 +222,19 @@ for f in files:
         except ValueError:
             pass
 
+# A link target git is configured to ignore resolves for whoever wrote it and for nobody
+# else: it is absent from every clone, and search and the graph cannot see it either, since
+# both are built from git ls-files. An allowlist .gitignore missing a re-include for a
+# populated directory is the usual cause. One batched check-ignore, not one call per link.
+if ignore_candidates:
+    proc = subprocess.run(["git", "check-ignore", "--stdin"], cwd=KB, input="\n".join(ignore_candidates),
+                          capture_output=True, text=True)
+    for tgt in proc.stdout.splitlines():
+        for f, t in ignore_candidates.get(tgt.strip(), ()):
+            issues.append(f"  IGNORED-TARGET {f} -> {t} (git is set to ignore it, so no commit "
+                          f"can pick it up; absent from every clone and invisible to search)")
+            ignored += 1
+
 for f in files:
     if orphan_exempt(f, os.path.basename(f)):
         continue
@@ -269,4 +286,4 @@ for line in issues:
 print(f"CORE broken={broken} unresolved={unresolved} badyaml={badyaml} notype={notype} "
       f"stale={stale} orphan={orphan} collision={collision} unindexed={unindexed} "
       f"missingfield={missingfield} deadend={deadend} staleptr={staleptr} chain={chain} "
-      f"external={external} extmissing={extmissing} untracked={untracked}")
+      f"external={external} extmissing={extmissing} ignored={ignored}")
