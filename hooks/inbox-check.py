@@ -10,7 +10,7 @@ entries awaiting triage" from "a few sessions pasting whole reports here", and t
 is the one that wants a different fix. Orchestrated sessions hit this hardest, having
 several subagent reports to land and no cheaper place to put them.
 
-Also flags MISFILED entries: a line in the documented Inbox shape (`- [YYYY-MM-DD ...`)
+Also flags MISFILED entries: a line opening with a date (`- [YYYY-MM-DD ...`, bracket optional)
 sitting anywhere in STATE.md except the Inbox section. "Append one line to STATE.md"
 resolves to "append at the end of the file" for an agent that did not locate the heading
 first, so entries land in whatever section happens to be last. The size caps cannot see
@@ -59,7 +59,7 @@ nxt = re.search(r"(?m)^## ", rest)
 section = rest[:nxt.start()] if nxt else rest
 
 # Entries that carry the Inbox line format but sit outside the Inbox section.
-entry_shape = re.compile(r"(?m)^- \[\d{4}-\d{2}-\d{2}\b")
+entry_shape = re.compile(r"(?m)^- \[?\d{4}-\d{2}-\d{2}\b")
 inbox_span = (heading.start(), heading.end() + len(section))
 misfiled = []
 current = "(before the first heading)"
