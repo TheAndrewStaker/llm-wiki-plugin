@@ -102,8 +102,10 @@ the CROSS-PARSER INTERSECTION (`hooks/frontmatter-portability.py`): duplicate ke
 HARD-FAIL (every parser silently drops data); warnings cover scalars that type-flip between YAML 1.1 and
 1.2 (bare `yes/no/on/off`, `NN:NN`), values that derail any parser (a leading `*`/`&` alias/anchor;
 unquoted ": " in titles), deprecated singular `tag:`/`alias:`, non-list `tags:`/`aliases:`, and folded or
-over-length `description:` values — the description is the level-1 retrieval surface agents scan, keep it
-one plain line. Cleaned advisory classes can be pinned via
+over-length `description:` values. A folded description reads as EMPTY to every line-based reader, which is a
+real break. Length is only an outlier guard (`desc_max_chars`, default 400, 0 disables): the description is
+indexed at 2x weight, so a flagged one should be REWRITTEN shorter, never truncated, since the tail carries
+ranked terms. Cleaned advisory classes can be pinned via
 `advisory_budgets` in `wiki.config.json` (count above budget fails the commit) so drift cannot silently
 re-accumulate. The judgment pass (contradictions, stale-superseded claims, missing pages, weak links) is
 the `reflect` skill — it proposes; you dispose.

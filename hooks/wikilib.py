@@ -52,6 +52,10 @@ DEFAULTS = {
         "entity": ["description"],
         "external-pointer": ["remote_url", "remote_path", "audience"],
     },
+    # description length at which the retrieval line has stopped being a scannable line.
+    # An outlier guard, deliberately above the natural spread: a description is indexed at
+    # 2x weight, so trimming one to fit a threshold deletes ranked terms.
+    "desc_max_chars": 400,
     # advisory "consider re-confirming" age for timestamp:
     "stale_days": 120,
     # a wiki with fewer than this many content pages is "young" (capture, don't query)

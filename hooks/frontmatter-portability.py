@@ -15,9 +15,14 @@ Checks (frontmatter block only, per tracked page):
   SINGULAR    deprecated singular keys tag:/alias:/cssclass: -- Obsidian 1.9 removed
               them; plural list forms are the OKF/Obsidian convention
   NONLIST     tags:/aliases: value that is neither a flow list [..] nor a block list
-  DESC        description: not a single plain line under 200 chars -- it is the level-1
-              retrieval surface; folded/multiline values read as EMPTY to the line-based
-              catalog and to agents scanning frontmatter
+  DESC        description: not a single plain line, or longer than desc_max_chars.
+              Folded/multiline values read as EMPTY to the line-based catalog and to
+              agents scanning frontmatter, which is a real break. Length is only an
+              outlier guard: the default sits well above a healthy corpus's spread
+              (measured on a 209-page wiki: p50 140, p90 219, p99 263, max 330 chars),
+              because the description is indexed at 2x weight, so trimming one to fit a
+              threshold deletes ranked terms. Rewrite a flagged description shorter;
+              never truncate it.
   TITLECOLON  unquoted title:/description: containing ": " -- parses as a nested
               mapping or errors, silently breaking the page's whole frontmatter
 
@@ -38,6 +43,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import wikilib
 
 KB = wikilib.resolve_root(sys.argv[1] if len(sys.argv) > 1 else None)
+cfg = wikilib.load_config(KB)
+DESC_MAX = int(cfg.get("desc_max_chars", 400) or 0)
 os.chdir(KB)
 files = wikilib.corpus_files(KB)
 
@@ -114,8 +121,10 @@ for f in files:
             if not val or folded.match(val):
                 flag("DESC", f, "description is folded/multiline; line-based catalogs and agents scanning frontmatter see it as empty -- make it one plain line")
                 desc += 1
-            elif len(val) > 200:
-                flag("DESC", f, f"description is {len(val)} chars; keep the level-1 retrieval line under 200")
+            elif DESC_MAX > 0 and len(val) > DESC_MAX:
+                flag("DESC", f, f"description is {len(val)} chars (over desc_max_chars={DESC_MAX}); "
+                                "it has stopped being a scannable line -- rewrite it shorter, "
+                                "do not truncate, the tail carries ranked terms")
                 desc += 1
 
 for line in issues:

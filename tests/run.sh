@@ -584,6 +584,36 @@ assert_contains "blank line before block list is a valid list" "nonlist=0" "$por
 bash "$H/lint.sh" "$PORT_W" >/dev/null 2>&1; rc=$?
 assert "dup-key/tab hard gate fails lint" "1" "$rc"
 
+echo "--- description length is an outlier guard, not a house style ---"
+# The description is indexed at 2x weight, so a threshold set inside a healthy corpus's
+# spread pushes authors to truncate, which deletes ranked terms. Default sits above it.
+DESC_W="$(mktemp -d)/wiki"
+mkdir -p "$DESC_W/concepts"
+mid=$(python3 -c "print('word ' * 50)")          # ~250 chars: normal for a dense page
+huge=$(python3 -c "print('word ' * 120)")        # ~600 chars: a pasted paragraph
+printf -- '---\ntype: concept\ntitle: Mid\ndescription: %s\n---\nbody\n' "$mid" > "$DESC_W/concepts/mid.md"
+git -C "$DESC_W" init -q && git -C "$DESC_W" add -A
+assert_contains "a 250-char description is not flagged" "desc=0" \
+  "$(python3 "$H/frontmatter-portability.py" "$DESC_W" | tail -1)"
+printf -- '---\ntype: concept\ntitle: Huge\ndescription: %s\n---\nbody\n' "$huge" > "$DESC_W/concepts/huge.md"
+git -C "$DESC_W" add -A
+huge_out=$(python3 "$H/frontmatter-portability.py" "$DESC_W")
+assert_contains "a 600-char description is flagged" "desc=1" "$(printf '%s\n' "$huge_out" | tail -1)"
+assert_contains "the advice is to rewrite, not truncate" "do not truncate" "$huge_out"
+printf '{"desc_max_chars": 200}\n' > "$DESC_W/wiki.config.json"
+assert_contains "the threshold is per-wiki configurable" "desc=2" \
+  "$(python3 "$H/frontmatter-portability.py" "$DESC_W" | tail -1)"
+printf '{"desc_max_chars": 0}\n' > "$DESC_W/wiki.config.json"
+assert_contains "0 disables the length check" "desc=0" \
+  "$(python3 "$H/frontmatter-portability.py" "$DESC_W" | tail -1)"
+# a folded description is a real break and stays flagged whatever the length setting is
+printf -- '---\ntype: concept\ntitle: Folded\ndescription: >-\n  folded away\n---\nbody\n' \
+  > "$DESC_W/concepts/folded.md"
+git -C "$DESC_W" add -A
+assert_contains "a folded description is still a defect with length off" "desc=1" \
+  "$(python3 "$H/frontmatter-portability.py" "$DESC_W" | tail -1)"
+rm -rf "$(dirname "$DESC_W")"
+
 echo "--- neighbor-scope reconcile nudge ---"
 NB_W="$(mktemp -d)/wiki"
 mkdir -p "$NB_W/concepts"
