@@ -32,13 +32,22 @@ Spawn a subagent that READS the scoped pages **and their `synthesized_from:` sou
 only (it must not edit any page). Per finding: **page** + **kind** (`contradiction` | `stale-superseded` |
 `missing-page` | `weak-crosslink` | `data-gap`), the **current** claim (quoted) and the **proposed** change
 (exact new text, or "create concepts/x.md"), a **rationale** (cite the source/contradicting page), and a
-one-word **confidence**: confirmed / reported / inferred / unconfirmed.
+one-word **confidence**: confirmed / reported / inferred / unconfirmed. Every `contradiction` finding also
+carries a **classification**, exactly one of: `genuine-contradiction` (the pages disagree about the same
+fact at the same time) · `version-difference` (both were true, at different times; the world moved) ·
+`scope-difference` (both true, over different populations/conditions) · `terminology-difference` (same
+fact, different words) · `unresolved-uncertainty` (not enough evidence to call it either way) — plus a
+one-line reason for the call.
 
 ### A3. Write the reflection log (the reversible artifact)
 Write to `analyses/reflection-YYYY-MM-DD.md` (do NOT touch target pages). Frontmatter `type: analysis`,
 `title`, `timestamp`, `synthesized_from:` = the scope list. Body: one **checkbox per proposed change**,
-grouped by page, quoting current + proposed + why + confidence. Add a line to `analyses/index.md`, run the
-lint (green), and commit ("Propose reflection edits YYYY-MM-DD"). Nothing in the wiki has changed yet.
+grouped by page, quoting current + proposed + why + confidence. Group contradiction findings by
+**classification**: `genuine-contradiction` and `version-difference` get a normal edit-proposal checkbox
+each (these are the only two that produce edit proposals by default); `scope-difference`,
+`terminology-difference`, and `unresolved-uncertainty` are listed under their own headings, unchecked and
+with no proposed edit, for the user to judge. Add a line to `analyses/index.md`, run the lint (green), and
+commit ("Propose reflection edits YYYY-MM-DD"). Nothing in the wiki has changed yet.
 
 ### A4. Report
 Give the user the path to the reflection log and a 2-line summary (N proposals across M pages). They check

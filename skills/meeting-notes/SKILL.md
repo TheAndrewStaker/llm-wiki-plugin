@@ -95,7 +95,9 @@ claims against those sources. When cross-referenced, say so inline.
 Add a row to `notes/index.md`; update the entity/concept pages the meeting touched; file any decisions
 (decision routing in `KNOWLEDGE.md`). Link, don't duplicate; relative-md links throughout. A meaningful
 edit to an existing page bumps its `timestamp:` to today (cosmetic edits bump nothing; `reviewed:` =
-re-verification without change).
+re-verification without change). For every related page touched, state one explicit operation: **ADD**
+(a new page), **UPDATE** (merge in), **DELETE** (superseded, archive it rather than removing it), or
+**NOOP** (already covered; cite where).
 
 ## Step 6 — Report + finish
 Short summary (who/what, key new facts, anything unverified/contradictory) and the path to the new page.
