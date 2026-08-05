@@ -183,10 +183,6 @@ def is_memory(f):
     return f.startswith("projects/") and "/memory/" in f
 
 
-def is_archived(f):
-    return f.startswith("archive/")
-
-
 def supersede_marker(text):
     """True if a page carries the supersede token: a `Status: Superseded` line, or
     `superseded_by:` in its real frontmatter block. Fences and inline code are
