@@ -76,7 +76,12 @@ import wikilib
 print(wikilib.load_config(sys.argv[2]).get("reflect_nudge_days", 0))
 PY
 )
-  if [ -n "${nudge_days:-}" ] && [ "$nudge_days" -gt 0 ]; then
+  case "${nudge_days:-0}" in
+    ''|*[!0-9]*)
+      warn="${warn:+$warn | }maintenance: reflect_nudge_days is not a whole number ('${nudge_days}'), ignoring"
+      nudge_days=0 ;;
+  esac
+  if [ "$nudge_days" -gt 0 ]; then
     newest_reflect=$(ls "$KB"/analyses/reflection-*.md 2>/dev/null | sort | tail -1)
     if [ -z "$newest_reflect" ]; then
       warn="${warn:+$warn | }maintenance: reflect has never run (cap ${nudge_days}d)"
@@ -122,8 +127,10 @@ prev, cur = parse(lines[-2]), parse(lines[-1])
 changed = []
 for key, cval in cur.items():
     pval = prev.get(key)
-    if pval is not None and pval != cval and pval != "?" and cval != "?":
-        changed.append(f"{key} {pval}->{cval}")
+    if pval is None or pval == cval:
+        continue
+    note = " (checker failed)" if cval == "?" else ""
+    changed.append(f"{key} {pval}->{cval}{note}")
 if changed:
     print("advisories since last lint: " + ", ".join(changed))
 PY

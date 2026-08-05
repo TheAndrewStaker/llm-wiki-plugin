@@ -1419,6 +1419,20 @@ assert_contains "delta line lists changed counters" \
   "advisories since last lint: orphans 0->1, islands 1->2" "$out"
 assert "delta line omits unchanged counters" "0" \
   "$(printf '%s' "$out" | grep -o 'advisories since last lint:[^|]*' | grep -c 'broken-links')"
+
+echo "--- session-status.sh: a counter flipping to ? is reported as a checker failure ---"
+printf '2026-01-03T00:00:00Z\tbroken-links:0  orphans:?  islands:2\n' >> "$RN/.compendium/lint-history.tsv"
+out=$(WIKI_ROOT="$RN" bash "$H/session-status.sh" 2>&1)
+assert_contains "numeric-to-? transition is reported, not dropped" \
+  "orphans 1->? (checker failed)" "$out"
+
+echo "--- session-status.sh: a non-integer reflect_nudge_days is ignored loudly ---"
+printf '{"reflect_nudge_days": "5.5"}\n' > "$RN/wiki.config.json"
+out=$(WIKI_ROOT="$RN" bash "$H/session-status.sh" 2>&1)
+assert_contains "invalid nudge value is named in a warning" \
+  "reflect_nudge_days is not a whole number" "$out"
+assert "invalid nudge value emits no stderr integer error" "0" \
+  "$(printf '%s' "$out" | grep -c 'integer expression expected')"
 rm -rf "$(dirname "$RN")"
 
 echo
