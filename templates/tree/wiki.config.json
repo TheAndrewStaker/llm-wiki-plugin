@@ -34,5 +34,7 @@
   "inbox_soft_max_words": 0,
   "_comment_drift": "0 (disabled) by default. Set to a day count to flag a page whose last real git edit is newer than its reviewed:/timestamp: by more than that many days.",
   "timestamp_drift_days": 0,
-  "drift_exempt_commit_pattern": "session auto-save"
+  "drift_exempt_commit_pattern": "session auto-save",
+  "_comment_reflect_nudge": "0 (disabled) by default. Set to a day count to get a session-start nudge when analyses/reflection-*.md has never run or is older than that many days.",
+  "reflect_nudge_days": 0
 }

@@ -1076,6 +1076,98 @@ optin=$($Q --root "$CORP" --limit 10 widget calibration | grep -c 'skills/')
 assert "an empty corpus_exclude opts tooling back in" "1" "$optin"
 rm -rf "$CORP"
 
+echo "--- lint.sh: appends a lint-history.tsv line every run ---"
+RN="$(mktemp -d)/wiki"
+mkdir -p "$RN"/{entities,concepts,analyses}
+cat > "$RN/KNOWLEDGE.md" <<'EOF'
+---
+type: index
+title: Index
+---
+[e](entities/index.md)
+EOF
+cat > "$RN/entities/index.md" <<'EOF'
+---
+type: index
+title: Entities
+---
+EOF
+cat > "$RN/STATE.md" <<'EOF'
+---
+type: state
+title: State
+---
+## Focus
+- fixture
+EOF
+git -C "$RN" init -q
+git -C "$RN" -c user.name=t -c user.email=t@t add -A
+git -C "$RN" -c user.name=t -c user.email=t@t commit -qm base >/dev/null
+bash "$H/lint.sh" "$RN" >/dev/null 2>&1
+assert "lint-history.tsv is created on first run" "1" \
+  "$([ -f "$RN/.compendium/lint-history.tsv" ] && echo 1 || echo 0)"
+assert "lint-history.tsv has one line after one run" "1" \
+  "$(wc -l < "$RN/.compendium/lint-history.tsv" | tr -d ' ')"
+mkdir -p "$RN/notes"
+cat > "$RN/notes/orphan.md" <<'EOF'
+---
+type: notes
+title: Orphan
+---
+lonely
+EOF
+git -C "$RN" add -A
+bash "$H/lint.sh" "$RN" >/dev/null 2>&1
+assert "lint-history.tsv gets a second line on a second run" "2" \
+  "$(wc -l < "$RN/.compendium/lint-history.tsv" | tr -d ' ')"
+
+echo "--- lint.sh: lint-history.tsv keeps only the newest 200 lines ---"
+: > "$RN/.compendium/lint-history.tsv"
+for i in $(seq 205); do printf '2020-01-01T00:00:00Z\tfiller %d\n' "$i" >> "$RN/.compendium/lint-history.tsv"; done
+bash "$H/lint.sh" "$RN" >/dev/null 2>&1
+assert "history is capped at 200 lines" "200" \
+  "$(wc -l < "$RN/.compendium/lint-history.tsv" | tr -d ' ')"
+assert "the oldest filler lines are dropped, not the newest" "0" \
+  "$(grep -c 'filler 1$' "$RN/.compendium/lint-history.tsv")"
+
+echo "--- session-status.sh: reflect maintenance nudge (disabled by default) ---"
+rm -f "$RN/wiki.config.json"
+out=$(WIKI_ROOT="$RN" bash "$H/session-status.sh" 2>&1)
+assert "no reflect nudge when reflect_nudge_days is unset" "0" "$(printf '%s' "$out" | grep -c 'maintenance: reflect')"
+
+echo "--- session-status.sh: reflect maintenance nudge (never run) ---"
+printf '{"reflect_nudge_days": 21}\n' > "$RN/wiki.config.json"
+out=$(WIKI_ROOT="$RN" bash "$H/session-status.sh" 2>&1)
+assert_contains "nudge fires when reflect has never run" "maintenance: reflect has never run (cap 21d)" "$out"
+
+echo "--- session-status.sh: reflect maintenance nudge (fresh reflection silences it) ---"
+touch "$RN/analyses/reflection-$(date -u +%Y-%m-%d).md"
+out=$(WIKI_ROOT="$RN" bash "$H/session-status.sh" 2>&1)
+assert "no nudge with a fresh reflection file" "0" "$(printf '%s' "$out" | grep -c 'maintenance: reflect')"
+
+echo "--- session-status.sh: reflect maintenance nudge (stale reflection fires) ---"
+rm -f "$RN/analyses/reflection-"*.md
+touch "$RN/analyses/reflection-2020-01-01.md"
+out=$(WIKI_ROOT="$RN" bash "$H/session-status.sh" 2>&1)
+assert_contains "nudge fires when the newest reflection is older than the cap" \
+  "cap 21d" "$out"
+assert_contains "nudge names how long ago reflect last ran" "maintenance: reflect last ran" "$out"
+rm -f "$RN/analyses/reflection-"*.md
+
+echo "--- session-status.sh: lint-history delta line ---"
+: > "$RN/.compendium/lint-history.tsv"
+printf '2026-01-01T00:00:00Z\tbroken-links:0  orphans:0  islands:1\n' >> "$RN/.compendium/lint-history.tsv"
+out=$(WIKI_ROOT="$RN" bash "$H/session-status.sh" 2>&1)
+assert "no delta line with only one history entry" "0" \
+  "$(printf '%s' "$out" | grep -c 'advisories since last lint')"
+printf '2026-01-02T00:00:00Z\tbroken-links:0  orphans:1  islands:2\n' >> "$RN/.compendium/lint-history.tsv"
+out=$(WIKI_ROOT="$RN" bash "$H/session-status.sh" 2>&1)
+assert_contains "delta line lists changed counters" \
+  "advisories since last lint: orphans 0->1, islands 1->2" "$out"
+assert "delta line omits unchanged counters" "0" \
+  "$(printf '%s' "$out" | grep -o 'advisories since last lint:[^|]*' | grep -c 'broken-links')"
+rm -rf "$(dirname "$RN")"
+
 echo
 echo "======================================"
 echo "  PASS=$pass  FAIL=$fail"

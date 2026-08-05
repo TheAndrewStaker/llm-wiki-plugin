@@ -66,6 +66,71 @@ if command -v python3 >/dev/null 2>&1; then
   [ -n "$inbox_over" ] && warn="${warn:+$warn | }wiki STATE.md Inbox is over its soft cap ($inbox_over) -- triage into Focus/Up next/ROADMAP/initiatives"
 fi
 
+# 1b. Maintenance nudges: an unrun-mechanism detector. Disabled unless wiki.config.json sets
+# reflect_nudge_days > 0. Two independent one-line signals, both best-effort (never block).
+if command -v python3 >/dev/null 2>&1; then
+  nudge_days=$(python3 - "$H" "$KB" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+import wikilib
+print(wikilib.load_config(sys.argv[2]).get("reflect_nudge_days", 0))
+PY
+)
+  if [ -n "${nudge_days:-}" ] && [ "$nudge_days" -gt 0 ]; then
+    newest_reflect=$(ls "$KB"/analyses/reflection-*.md 2>/dev/null | sort | tail -1)
+    if [ -z "$newest_reflect" ]; then
+      warn="${warn:+$warn | }maintenance: reflect has never run (cap ${nudge_days}d)"
+    else
+      rdate=$(basename "$newest_reflect" | sed -n 's/^reflection-\([0-9-]*\)\.md$/\1/p')
+      rage=$(python3 -c "import datetime,sys
+try:
+    d=datetime.date.fromisoformat(sys.argv[1])
+except ValueError:
+    sys.exit(1)
+print((datetime.date.today()-d).days)" "$rdate" 2>/dev/null)
+      if [ -n "${rage:-}" ] && [ "$rage" -gt "$nudge_days" ]; then
+        warn="${warn:+$warn | }maintenance: reflect last ran ${rage}d ago (cap ${nudge_days}d)"
+      fi
+    fi
+  fi
+fi
+
+# 1c. Lint-history delta: a one-line summary of which advisory counters changed between the
+# last two lint runs (disabled implicitly when fewer than 2 history lines exist).
+if [ -f "$KB/.compendium/lint-history.tsv" ]; then
+  delta=$(python3 - "$KB/.compendium/lint-history.tsv" <<'PY'
+import re, sys
+
+path = sys.argv[1]
+try:
+    with open(path, encoding="utf-8") as fh:
+        lines = [l.rstrip("\n") for l in fh if l.strip()]
+except OSError:
+    lines = []
+if len(lines) < 2:
+    sys.exit(0)
+
+
+def parse(line):
+    parts = line.split("\t", 1)
+    if len(parts) != 2:
+        return {}
+    return dict(re.findall(r"([\w-]+):(\?|\d+)", parts[1]))
+
+
+prev, cur = parse(lines[-2]), parse(lines[-1])
+changed = []
+for key, cval in cur.items():
+    pval = prev.get(key)
+    if pval is not None and pval != cval and pval != "?" and cval != "?":
+        changed.append(f"{key} {pval}->{cval}")
+if changed:
+    print("advisories since last lint: " + ", ".join(changed))
+PY
+)
+  [ -n "$delta" ] && warn="${warn:+$warn | }$delta"
+fi
+
 # 2. Current focus from STATE.md (the handoff; absence is normal).
 if [ -f "$KB/STATE.md" ]; then
   focus=$(awk '/^## Focus/{f=1;next} /^## /{f=0} f' "$KB/STATE.md" 2>/dev/null | sed '/^[[:space:]]*$/d')

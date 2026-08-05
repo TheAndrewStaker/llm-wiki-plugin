@@ -70,6 +70,9 @@ DEFAULTS = {
     # commit subjects matching this (case-insensitive) regex are ignored when computing
     # a page's last-edit date for the drift check (routine autosave commits aren't edits).
     "drift_exempt_commit_pattern": "session auto-save",
+    # maintenance nudge: warn at session start if analyses/reflection-*.md is older than this
+    # many days (or never run). 0 disables the check.
+    "reflect_nudge_days": 0,
     # lifecycle mutations are explicit and independently configurable
     "auto_commit": True,
     "auto_push": False,

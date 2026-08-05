@@ -91,7 +91,18 @@ pa=$(printf '%s\n' "$port"   | sed -n 's/.* ambig=\([0-9]*\).*/\1/p')
 pd=$(printf '%s\n' "$port"   | sed -n 's/.* desc=\([0-9]*\).*/\1/p')
 ng=$(printf '%s\n' "$neigh"  | sed -n 's/^NEIGHBORS=//p')
 
-echo "${C}== summary ==${Z}  broken-links:${b:-?}  external:${ex:-?}/${em:-?}  ignored-targets:${ig:-?}  unresolved:${u:-?}  bad-yaml:${by:-?}  orphans:${orp:-?}  islands:${islands:-?}  missed-links:${ml:-?}  no-type:${nt:-?}  stale:${st:-?}  collisions:${col:-?}  unindexed:${unx:-?}  missing-fields:${mf:-?}  dead-ends:${de:-?}  stale-pointers:${sp:-?}  chains:${ch:-?}  wanted:${wp:-?}  inbox:${ib:-?}  drift:${dr:-?}  dup-keys:${dk:-?}  fm-tabs:${tb:-?}  ambig-yaml:${pa:-?}  desc-quality:${pd:-?}  neighbors:${ng:-?}  vendor:${vn:-?}"
+summary_line="broken-links:${b:-?}  external:${ex:-?}/${em:-?}  ignored-targets:${ig:-?}  unresolved:${u:-?}  bad-yaml:${by:-?}  orphans:${orp:-?}  islands:${islands:-?}  missed-links:${ml:-?}  no-type:${nt:-?}  stale:${st:-?}  collisions:${col:-?}  unindexed:${unx:-?}  missing-fields:${mf:-?}  dead-ends:${de:-?}  stale-pointers:${sp:-?}  chains:${ch:-?}  wanted:${wp:-?}  inbox:${ib:-?}  drift:${dr:-?}  dup-keys:${dk:-?}  fm-tabs:${tb:-?}  ambig-yaml:${pa:-?}  desc-quality:${pd:-?}  neighbors:${ng:-?}  vendor:${vn:-?}"
+echo "${C}== summary ==${Z}  ${summary_line}"
+
+# Maintenance history: one line per run, newest 200 kept. Best-effort; must never fail the lint.
+{
+  hist_dir="$KB/.compendium"
+  mkdir -p "$hist_dir" 2>/dev/null
+  hist_file="$hist_dir/lint-history.tsv"
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf '%s\t%s\n' "$ts" "$summary_line" >>"$hist_file" 2>/dev/null
+  tail -n 200 "$hist_file" >"${hist_file}.tmp" 2>/dev/null && mv "${hist_file}.tmp" "$hist_file" 2>/dev/null
+} || true
 # If the gate counters didn't parse, the CORE line is malformed -> fail closed, don't pass blind.
 if [ -z "$b" ] || [ -z "$u" ] || [ -z "$by" ]; then
   echo "${R}FAIL${Z} (could not read lint-core counts; failing closed)"; exit 2
