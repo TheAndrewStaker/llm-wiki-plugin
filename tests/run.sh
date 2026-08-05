@@ -460,6 +460,140 @@ assert "exempt-only-edited page is not flagged" "0" "$(printf '%s\n' "$drift" | 
 rm "$W/wiki.config.json"
 git -C "$W" rm -qf notes/drifted.md notes/exempt-example.md >/dev/null 2>&1
 
+echo "--- rubber-stamp advisory: a bare forward timestamp bump is flagged ---"
+cat > "$W/notes/rs-flagged.md" <<'EOF'
+---
+type: notes
+title: RS flagged page
+timestamp: 2026-01-01
+synthesized_from: ../sources/beta-src.md
+---
+Links [alpha](../entities/alpha.md) so it is not a dead end.
+EOF
+git -C "$W" add -A >/dev/null 2>&1
+GIT_AUTHOR_DATE="2026-01-01 12:00:00 +0000" GIT_COMMITTER_DATE="2026-01-01 12:00:00 +0000" \
+  git -C "$W" -c user.name=t -c user.email=t@t commit -qm "add rs-flagged page" >/dev/null 2>&1
+sed -i.bak 's/^timestamp: 2026-01-01/timestamp: 2026-07-01/' "$W/notes/rs-flagged.md"
+rm -f "$W/notes/rs-flagged.md.bak"
+git -C "$W" add -A >/dev/null 2>&1
+GIT_AUTHOR_DATE="2026-07-01 12:00:00 +0000" GIT_COMMITTER_DATE="2026-07-01 12:00:00 +0000" \
+  git -C "$W" -c user.name=t -c user.email=t@t commit -qm "bump timestamp" >/dev/null 2>&1
+rs=$(python3 "$H/rubber-stamp.py" "$W")
+assert_contains "bare forward bump flagged" "RUBBER-STAMP notes/rs-flagged.md" "$rs"
+bash "$H/lint.sh" "$W" >/dev/null 2>&1; rc=$?
+assert "rubber-stamp stays advisory (gate passes)" "0" "$rc"
+
+echo "--- rubber-stamp advisory: a timestamp bump WITH a content edit is not flagged ---"
+cat > "$W/notes/rs-content.md" <<'EOF'
+---
+type: notes
+title: RS content page
+timestamp: 2026-01-01
+synthesized_from: ../sources/beta-src.md
+---
+Links [alpha](../entities/alpha.md) so it is not a dead end. Original body.
+EOF
+git -C "$W" add -A >/dev/null 2>&1
+GIT_AUTHOR_DATE="2026-01-01 12:00:00 +0000" GIT_COMMITTER_DATE="2026-01-01 12:00:00 +0000" \
+  git -C "$W" -c user.name=t -c user.email=t@t commit -qm "add rs-content page" >/dev/null 2>&1
+cat > "$W/notes/rs-content.md" <<'EOF'
+---
+type: notes
+title: RS content page
+timestamp: 2026-07-01
+synthesized_from: ../sources/beta-src.md
+---
+Links [alpha](../entities/alpha.md) so it is not a dead end. Revised body.
+EOF
+git -C "$W" add -A >/dev/null 2>&1
+GIT_AUTHOR_DATE="2026-07-01 12:00:00 +0000" GIT_COMMITTER_DATE="2026-07-01 12:00:00 +0000" \
+  git -C "$W" -c user.name=t -c user.email=t@t commit -qm "revise rs-content page" >/dev/null 2>&1
+rs=$(python3 "$H/rubber-stamp.py" "$W")
+assert "content-edit bump is not flagged" "0" \
+  "$(printf '%s\n' "$rs" | grep -c 'RUBBER-STAMP notes/rs-content.md')"
+
+echo "--- rubber-stamp advisory: a reviewed:-only bump is not flagged ---"
+cat > "$W/notes/rs-reviewed.md" <<'EOF'
+---
+type: notes
+title: RS reviewed page
+timestamp: 2026-01-01
+reviewed: 2026-01-01
+synthesized_from: ../sources/beta-src.md
+---
+Links [alpha](../entities/alpha.md) so it is not a dead end.
+EOF
+git -C "$W" add -A >/dev/null 2>&1
+GIT_AUTHOR_DATE="2026-01-01 12:00:00 +0000" GIT_COMMITTER_DATE="2026-01-01 12:00:00 +0000" \
+  git -C "$W" -c user.name=t -c user.email=t@t commit -qm "add rs-reviewed page" >/dev/null 2>&1
+sed -i.bak 's/^reviewed: 2026-01-01/reviewed: 2026-07-01/' "$W/notes/rs-reviewed.md"
+rm -f "$W/notes/rs-reviewed.md.bak"
+git -C "$W" add -A >/dev/null 2>&1
+GIT_AUTHOR_DATE="2026-07-01 12:00:00 +0000" GIT_COMMITTER_DATE="2026-07-01 12:00:00 +0000" \
+  git -C "$W" -c user.name=t -c user.email=t@t commit -qm "re-verify rs-reviewed page" >/dev/null 2>&1
+rs=$(python3 "$H/rubber-stamp.py" "$W")
+assert "reviewed:-only bump is not flagged" "0" \
+  "$(printf '%s\n' "$rs" | grep -c 'RUBBER-STAMP notes/rs-reviewed.md')"
+
+echo "--- rubber-stamp advisory: a backward correction to match git history is not flagged ---"
+cat > "$W/notes/rs-backward.md" <<'EOF'
+---
+type: notes
+title: RS backward page
+timestamp: 2026-01-01
+synthesized_from: ../sources/beta-src.md
+---
+Links [alpha](../entities/alpha.md) so it is not a dead end.
+EOF
+git -C "$W" add -A >/dev/null 2>&1
+GIT_AUTHOR_DATE="2026-01-01 12:00:00 +0000" GIT_COMMITTER_DATE="2026-01-01 12:00:00 +0000" \
+  git -C "$W" -c user.name=t -c user.email=t@t commit -qm "add rs-backward page" >/dev/null 2>&1
+sed -i.bak 's/^timestamp: 2026-01-01/timestamp: 2026-09-01/' "$W/notes/rs-backward.md"
+rm -f "$W/notes/rs-backward.md.bak"
+git -C "$W" add -A >/dev/null 2>&1
+GIT_AUTHOR_DATE="2026-02-01 12:00:00 +0000" GIT_COMMITTER_DATE="2026-02-01 12:00:00 +0000" \
+  git -C "$W" -c user.name=t -c user.email=t@t commit -qm "erroneously stamp ahead" >/dev/null 2>&1
+sed -i.bak 's/^timestamp: 2026-09-01/timestamp: 2026-01-15/' "$W/notes/rs-backward.md"
+rm -f "$W/notes/rs-backward.md.bak"
+git -C "$W" add -A >/dev/null 2>&1
+GIT_AUTHOR_DATE="2026-03-01 12:00:00 +0000" GIT_COMMITTER_DATE="2026-03-01 12:00:00 +0000" \
+  git -C "$W" -c user.name=t -c user.email=t@t commit -qm "correct timestamp to match history" >/dev/null 2>&1
+rs=$(python3 "$H/rubber-stamp.py" "$W")
+assert "backward correction is not flagged" "0" \
+  "$(printf '%s\n' "$rs" | grep -c 'RUBBER-STAMP notes/rs-backward.md')"
+
+echo "--- rubber-stamp advisory: staged (uncommitted) forward bump is flagged too ---"
+cat > "$W/notes/rs-staged.md" <<'EOF'
+---
+type: notes
+title: RS staged page
+timestamp: 2026-01-01
+synthesized_from: ../sources/beta-src.md
+---
+Links [alpha](../entities/alpha.md) so it is not a dead end.
+EOF
+git -C "$W" add -A >/dev/null 2>&1
+GIT_AUTHOR_DATE="2026-01-01 12:00:00 +0000" GIT_COMMITTER_DATE="2026-01-01 12:00:00 +0000" \
+  git -C "$W" -c user.name=t -c user.email=t@t commit -qm "add rs-staged page" >/dev/null 2>&1
+sed -i.bak 's/^timestamp: 2026-01-01/timestamp: 2026-07-01/' "$W/notes/rs-staged.md"
+rm -f "$W/notes/rs-staged.md.bak"
+git -C "$W" add -A >/dev/null 2>&1
+rs=$(python3 "$H/rubber-stamp.py" "$W")
+assert_contains "staged forward bump flagged" "RUBBER-STAMP notes/rs-staged.md" "$rs"
+GIT_AUTHOR_DATE="2026-07-01 12:00:00 +0000" GIT_COMMITTER_DATE="2026-07-01 12:00:00 +0000" \
+  git -C "$W" -c user.name=t -c user.email=t@t commit -qm "bump timestamp (staged test)" >/dev/null 2>&1
+
+echo "--- rubber-stamp advisory: advisory_budgets.rubber_stamp gates it ---"
+printf '{"advisory_budgets":{"rubber_stamp":0}}\n' > "$W/wiki.config.json"
+budget_out=$(bash "$H/lint.sh" "$W" 2>&1); rc=$?
+assert "the just-committed rubber-stamp bump busts a 0 budget" "1" "$rc"
+assert_contains "budget failure names rubber_stamp" "BUDGET rubber_stamp=" "$budget_out"
+rm "$W/wiki.config.json"
+git -C "$W" rm -qf notes/rs-flagged.md notes/rs-content.md notes/rs-reviewed.md \
+  notes/rs-backward.md notes/rs-staged.md >/dev/null 2>&1
+git -C "$W" -c user.name=t -c user.email=t@t commit -qm "clean up rubber-stamp fixtures" \
+  >/dev/null 2>&1
+
 echo "--- template scaffold lints clean + pre-commit gate blocks ---"
 # wiki-setup's deterministic core: templates/tree + the wiki's own hook copies must yield a
 # lint-green wiki whose pre-commit rejects a broken link and passes a clean commit.

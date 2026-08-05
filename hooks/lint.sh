@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Deterministic knowledge-base lint (fast, single-pass Python). Pre-commit-gated + run on demand.
 # Hard-fails on broken links or unresolved commit-gate tokens; orphans / islands / missed-links /
-# no-type / stale / collisions / unindexed / inbox soft-cap / timestamp-drift / external /
-# ignored-targets are advisory.
+# no-type / stale / collisions / unindexed / inbox soft-cap / timestamp-drift / rubber-stamp /
+# external / ignored-targets are advisory.
 # "external" is advisory by necessity: those targets live outside the wiki root, so gating them
 # would hand the verdict to an unrelated repo's working tree. "ignored-targets" names the
 # inverse blind spot: a target the working tree has and git is set to ignore, so it is present
@@ -26,7 +26,8 @@ if [ -t 1 ]; then C=$'\033[36m'; R=$'\033[31m'; G=$'\033[32m'; Z=$'\033[0m'; els
 # read "?" and the run would look complete. A partial vendored copy did exactly that.
 missing_checkers=""
 for c in lint-core.py graph-check.py missed-links.py wanted-pages.py inbox-check.py \
-         timestamp-drift.py frontmatter-portability.py neighbor-scope.py vendor-check.py; do
+         timestamp-drift.py rubber-stamp.py frontmatter-portability.py neighbor-scope.py \
+         vendor-check.py; do
   [ -f "$H/$c" ] || missing_checkers="${missing_checkers:+$missing_checkers }$c"
 done
 if [ -n "$missing_checkers" ]; then
@@ -43,6 +44,7 @@ missed=$(python3 "$H/missed-links.py" "$KB" 2>/dev/null || true)
 wanted=$(python3 "$H/wanted-pages.py" "$KB" 2>/dev/null || true)
 inbox=$(python3 "$H/inbox-check.py" "$KB" 2>/dev/null || true)
 drift=$(python3 "$H/timestamp-drift.py" "$KB" 2>/dev/null || true)
+rubber=$(python3 "$H/rubber-stamp.py" "$KB" 2>/dev/null || true)
 port=$(python3 "$H/frontmatter-portability.py" "$KB" 2>/dev/null || true)
 neigh=$(python3 "$H/neighbor-scope.py" "$KB" 2>/dev/null || true)
 vendor=$(python3 "$H/vendor-check.py" "$KB" 2>/dev/null || true)
@@ -60,6 +62,7 @@ printf '%s\n' "$missed" | grep '^  MISSED-LINK' || true
 printf '%s\n' "$wanted" | grep '^  WANTED' || true
 printf '%s\n' "$inbox"  | grep '^  INBOX-' || true
 printf '%s\n' "$drift"  | grep '^  DRIFT' || true
+printf '%s\n' "$rubber" | grep '^  RUBBER-STAMP' || true
 printf '%s\n' "$port"   | grep '^  PORT-' || true
 printf '%s\n' "$neigh"  | grep '^  NEIGHBOR' || true
 printf '%s\n' "$vendor" | grep '^  VENDOR-' || true
@@ -84,6 +87,7 @@ ml=$(printf '%s\n' "$missed" | sed -n 's/^MISSED_LINKS=//p')
 wp=$(printf '%s\n' "$wanted" | sed -n 's/^WANTED=\([0-9]*\).*/\1/p')
 ib=$(printf '%s\n' "$inbox"  | sed -n 's/^INBOX=//p')
 dr=$(printf '%s\n' "$drift"  | sed -n 's/^DRIFT=\([0-9]*\).*/\1/p')
+rs=$(printf '%s\n' "$rubber" | sed -n 's/^RUBBER-STAMP=\([0-9]*\).*/\1/p')
 vn=$(printf '%s\n' "$vendor" | sed -n 's/^VENDOR=//p')
 dk=$(printf '%s\n' "$port"   | sed -n 's/^PORT dupkey=\([0-9]*\).*/\1/p')
 tb=$(printf '%s\n' "$port"   | sed -n 's/^PORT [^ ]* tab=\([0-9]*\).*/\1/p')
@@ -91,7 +95,7 @@ pa=$(printf '%s\n' "$port"   | sed -n 's/.* ambig=\([0-9]*\).*/\1/p')
 pd=$(printf '%s\n' "$port"   | sed -n 's/.* desc=\([0-9]*\).*/\1/p')
 ng=$(printf '%s\n' "$neigh"  | sed -n 's/^NEIGHBORS=//p')
 
-summary_line="broken-links:${b:-?}  external:${ex:-?}/${em:-?}  ignored-targets:${ig:-?}  unresolved:${u:-?}  bad-yaml:${by:-?}  orphans:${orp:-?}  islands:${islands:-?}  missed-links:${ml:-?}  no-type:${nt:-?}  stale:${st:-?}  collisions:${col:-?}  unindexed:${unx:-?}  missing-fields:${mf:-?}  dead-ends:${de:-?}  stale-pointers:${sp:-?}  chains:${ch:-?}  wanted:${wp:-?}  inbox:${ib:-?}  drift:${dr:-?}  dup-keys:${dk:-?}  fm-tabs:${tb:-?}  ambig-yaml:${pa:-?}  desc-quality:${pd:-?}  neighbors:${ng:-?}  vendor:${vn:-?}"
+summary_line="broken-links:${b:-?}  external:${ex:-?}/${em:-?}  ignored-targets:${ig:-?}  unresolved:${u:-?}  bad-yaml:${by:-?}  orphans:${orp:-?}  islands:${islands:-?}  missed-links:${ml:-?}  no-type:${nt:-?}  stale:${st:-?}  collisions:${col:-?}  unindexed:${unx:-?}  missing-fields:${mf:-?}  dead-ends:${de:-?}  stale-pointers:${sp:-?}  chains:${ch:-?}  wanted:${wp:-?}  inbox:${ib:-?}  drift:${dr:-?}  rubber-stamp:${rs:-?}  dup-keys:${dk:-?}  fm-tabs:${tb:-?}  ambig-yaml:${pa:-?}  desc-quality:${pd:-?}  neighbors:${ng:-?}  vendor:${vn:-?}"
 echo "${C}== summary ==${Z}  ${summary_line}"
 
 # Maintenance history: one line per run, newest 200 kept. Best-effort; must never fail the lint.
@@ -115,11 +119,11 @@ fi
 if [ -n "${dk:-}" ] && [ -n "${tb:-}" ] && { [ "$dk" -gt 0 ] || [ "$tb" -gt 0 ]; }; then
   echo "${R}FAIL${Z} (duplicate frontmatter keys or tab indentation -- parsers silently drop data)"; exit 1
 fi
-budget_report=$(python3 - "$KB" "${orp:--1}" "${islands:--1}" "${ml:--1}" "${col:--1}" "${unx:--1}" "${de:--1}" "${em:--1}" "${ig:--1}" <<'PY'
+budget_report=$(python3 - "$KB" "${orp:--1}" "${islands:--1}" "${ml:--1}" "${col:--1}" "${unx:--1}" "${de:--1}" "${em:--1}" "${ig:--1}" "${rs:--1}" <<'PY'
 import json, os, sys
 root, values = sys.argv[1], sys.argv[2:]
 names = ("orphan", "islands", "missed_links", "collision", "unindexed", "deadend",
-         "external_missing", "ignored_targets")
+         "external_missing", "ignored_targets", "rubber_stamp")
 try:
     cfg = json.load(open(os.path.join(root, "wiki.config.json"), encoding="utf-8"))
 except (FileNotFoundError, ValueError, OSError):
