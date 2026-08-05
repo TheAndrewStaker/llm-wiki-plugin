@@ -8,6 +8,7 @@
 - [ ] Run secret, organization-residue, dependency, and license scans over the complete git history.
 - [ ] Review Apache-2.0, NOTICE, CONTRIBUTING, SECURITY, and private vulnerability reporting.
 - [ ] Populate real synthetic retrieval eval cases and choose a documented Recall@k release threshold.
+- [ ] Run `evals/reflect-contradiction.example.md` against the current reflect prompt and record the classification it produced.
 - [ ] Export a sample wiki and validate it against both `wiki-okf` and Google's current OKF reference tooling.
 - [ ] Test upgrades from the preceding release without overwriting wiki-owned files or configuration.
 - [ ] Pin release notes to a commit, create the signed tag, then publish marketplaces only after smoke tests pass.

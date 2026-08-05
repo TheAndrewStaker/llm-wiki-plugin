@@ -198,6 +198,22 @@ echo "--- reflect-scope caps + runs ---"
 scope=$(python3 "$H/reflect-scope.py" "$W")
 assert_contains "reflect-scope emits a count" "SCOPE_COUNT=" "$scope"
 
+echo "--- reflect-scope includes a freshly committed contradiction-pair page ---"
+# Seeded-contradiction self-test (pin #1 of 3): a page only becomes eligible for the
+# reflect pass once it is actually committed to the fixture, mirroring how a real ingest
+# lands. This does not judge the contradiction itself (that needs a subagent, see
+# evals/reflect-contradiction.example.md); it only pins that reflect-scope.py's candidate
+# list picks up the newly committed page via the oldest-timestamp lane.
+cp "$ROOT/tests/fixtures/contradiction-a.md" "$W/entities/relay-node.md"
+cp "$ROOT/tests/fixtures/contradiction-b.md" "$W/concepts/relay-node-defaults.md"
+git -C "$W" add -A >/dev/null 2>&1
+git -C "$W" -c user.name=t -c user.email=t@t commit -qm "add relay-node contradiction pair" >/dev/null 2>&1
+pair_scope=$(python3 "$H/reflect-scope.py" "$W")
+assert_contains "reflect-scope includes the committed contradiction page" \
+  "entities/relay-node.md" "$pair_scope"
+git -C "$W" rm -qf entities/relay-node.md concepts/relay-node-defaults.md >/dev/null 2>&1
+git -C "$W" -c user.name=t -c user.email=t@t commit -qm "remove relay-node contradiction pair" >/dev/null 2>&1
+
 echo "--- search health check (deterministic index-size tripwire) ---"
 h=$($Q --root "$W" --health)
 assert_contains "health emits a verdict" "verdict:" "$h"
