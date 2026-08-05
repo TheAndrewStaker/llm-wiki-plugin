@@ -24,6 +24,8 @@
   "stale_days": 120,
   "young_wiki_pages": 20,
   "session_read_budget_words": 20000,
+  "_comment_downrank": "Multiplies wiki-query's BM25 score for superseded (superseded_by: or Status: Superseded) and archived (archive/) pages. 1.0 disables the down-rank.",
+  "superseded_downrank": 0.4,
   "_comment_lifecycle": "Local auto-commit is on by default. Network push is opt-in; shared wikis should normally disable auto_commit and use reviewed commits/PRs.",
   "auto_commit": true,
   "auto_push": false,

@@ -105,6 +105,49 @@ after=$(python3 "$H/missed-links.py" "$W" | sed -n 's/^MISSED_LINKS=//p')
 assert "stoplist drops the missed link" "$((before-1))" "$after"
 rm "$W/wiki.config.json"
 
+echo "--- query: superseded/archived pages are down-ranked, not just equally-matched ---"
+DR="$(mktemp -d)/wiki"
+mkdir -p "$DR"/{concepts,archive}
+git -C "$DR" init -q
+git -C "$DR" config user.name test
+git -C "$DR" config user.email test@example.invalid
+cat > "$DR/concepts/live.md" <<'EOF'
+---
+type: concept
+title: Zephyr Calibration Notes
+---
+This page covers the zephyr calibration approach we use today across every
+downstream deployment and keep current going forward without exception.
+EOF
+cat > "$DR/concepts/old.md" <<'EOF'
+---
+type: concept
+title: Old Zephyr Notes
+superseded_by: concepts/live.md
+---
+zephyr calibration zephyr calibration zephyr calibration zephyr calibration
+zephyr calibration
+EOF
+cat > "$DR/archive/ancient.md" <<'EOF'
+---
+type: concept
+title: Ancient Zephyr Notes
+---
+zephyr calibration zephyr calibration zephyr calibration
+EOF
+git -C "$DR" add -A >/dev/null 2>&1
+git -C "$DR" commit -qm seed
+drout=$($Q --root "$DR" --limit 10 zephyr calibration)
+drtop=$(printf '%s\n' "$drout" | head -1 | awk '{print $2}')
+assert "the live page outranks the superseded page by default" "concepts/live.md" "$drtop"
+assert_contains "the superseded page is tagged in output" "[superseded]" "$drout"
+assert_contains "the archived page is tagged in output" "[archive]" "$drout"
+printf '{"superseded_downrank": 1.0}\n' > "$DR/wiki.config.json"
+puredr=$($Q --root "$DR" --limit 10 zephyr calibration)
+puretop=$(printf '%s\n' "$puredr" | head -1 | awk '{print $2}')
+assert "superseded_downrank: 1.0 restores pure BM25 order" "concepts/old.md" "$puretop"
+rm -rf "$(dirname "$DR")"
+
 echo "--- gate fails on a broken link ---"
 cat > "$W/notes/orphan.md" <<'EOF'
 ---

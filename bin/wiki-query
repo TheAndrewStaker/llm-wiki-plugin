@@ -12,6 +12,10 @@ Usage:
 Root resolution: --root, else $CLAUDE_PLUGIN_OPTION_WIKI_ROOT, else $WIKI_ROOT, else ~/wiki.
 catalog.tsv (path, type, title, tags, aliases, timestamp, description) is regenerated on every
 run so it never goes stale; --catalog just writes it without searching.
+
+Superseded pages (superseded_by: or Status: Superseded) and archived pages (archive/) have
+their final score multiplied by wiki.config.json's superseded_downrank (default 0.4, 1.0
+disables it) and are tagged [superseded] or [archive] in the printed results.
 """
 import argparse
 import math
@@ -31,15 +35,46 @@ def resolve_root(cli):
 # Mirrors wikilib.corpus_files. Kept inline because this CLI is deliberately standalone.
 CORPUS_EXCLUDE = ("sources/", "commands/", "skills/", "hooks/")
 
+DEFAULT_SUPERSEDED_DOWNRANK = 0.4
 
-def corpus_exclude(kb):
+
+def load_wiki_config(kb):
     import json
     try:
         with open(os.path.join(kb, "wiki.config.json"), encoding="utf-8") as fh:
-            configured = json.load(fh).get("corpus_exclude")
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
     except (OSError, ValueError):
-        return CORPUS_EXCLUDE
+        return {}
+
+
+def corpus_exclude(kb, cfg=None):
+    cfg = load_wiki_config(kb) if cfg is None else cfg
+    configured = cfg.get("corpus_exclude")
     return tuple(configured) if isinstance(configured, list) else CORPUS_EXCLUDE
+
+
+def superseded_downrank(cfg):
+    try:
+        return float(cfg.get("superseded_downrank", DEFAULT_SUPERSEDED_DOWNRANK))
+    except (TypeError, ValueError):
+        return DEFAULT_SUPERSEDED_DOWNRANK
+
+
+def is_archived(path):
+    return path.startswith("archive/")
+
+
+# Mirrors wikilib.supersede_marker. Kept inline because this CLI is deliberately
+# standalone; the definition (Status: Superseded token, or superseded_by: in real
+# frontmatter, fences/inline-code stripped first) must stay identical to lint's.
+def supersede_marker(text):
+    stripped = re.sub(r"(?s)(```|~~~).*?(\1|\Z)", "", text)
+    stripped = re.sub(r"`[^`]*`", "", stripped)
+    if re.search(r"(?im)^\s*Status:\s*Superseded", stripped):
+        return True
+    fmblock = re.match(r"^---\n(.*?)\n---", text, re.S)
+    return bool(fmblock and re.search(r"^superseded_by:\s*\S", fmblock.group(1), re.M))
 
 
 def git_files(kb):
@@ -100,10 +135,19 @@ def build_index(kb):
                 continue
             tgt = t.lstrip("/") if t.startswith("/") else os.path.normpath(os.path.join(d, t)).replace(os.sep, "/")
             links.add(tgt)
+        # rank_tag: why a page is down-ranked, shown in output so an agent knows it
+        # isn't the current word on the topic. archive/ is unambiguous from the path
+        # alone; superseded_by:/Status: Superseded needs the frontmatter/body check.
+        if is_archived(f):
+            rank_tag = "archive"
+        elif supersede_marker(text):
+            rank_tag = "superseded"
+        else:
+            rank_tag = None
         docs.append({
             "path": f, "type": fm.get("type", ""), "title": title, "tags": tags,
             "aliases": aliases, "timestamp": fm.get("timestamp", ""),
-            "description": desc, "tokens": toks, "links": links,
+            "description": desc, "tokens": toks, "links": links, "rank_tag": rank_tag,
         })
     return docs
 
@@ -121,7 +165,7 @@ def write_catalog(kb, docs):
     return path
 
 
-def bm25(docs, query_tokens, k1=1.5, b=0.75):
+def bm25(docs, query_tokens, downrank=1.0, k1=1.5, b=0.75):
     import collections
     N = len(docs)
     if not N:
@@ -149,6 +193,10 @@ def bm25(docs, query_tokens, k1=1.5, b=0.75):
         q = " ".join(query_tokens)
         if any(q == a.lower() for a in d["aliases"]) or q == d["title"].lower():
             score += 5.0
+        # final score: superseded/archived pages are down-weighted so a live page on
+        # the same terms outranks the stale one instead of tying on raw BM25.
+        if d["rank_tag"] and downrank != 1.0:
+            score *= downrank
         scores.append((score, d["path"], d))
     scores.sort(key=lambda x: (-x[0], x[1]))
     return [(s, d) for s, _, d in scores if s > 0]
@@ -239,7 +287,8 @@ def main():
         want = {t.lower() for t in a.tag}
         pool = [d for d in pool if want & {x.lower() for x in d["tags"]}]
 
-    ranked = bm25(pool, tokenize(" ".join(a.query)))
+    downrank = superseded_downrank(load_wiki_config(kb))
+    ranked = bm25(pool, tokenize(" ".join(a.query)), downrank=downrank)
     top = ranked[:a.limit]
 
     if a.neighbors and top:
@@ -257,9 +306,10 @@ def main():
         print("(no matches)")
         return 0
     for score, d in top:
-        tag = f" [{d['type']}]" if d["type"] else ""
+        type_tag = f" [{d['type']}]" if d["type"] else ""
+        rank_tag = f" [{d['rank_tag']}]" if d["rank_tag"] else ""
         mark = "  ~neighbor" if score == 0.0 and a.neighbors else ""
-        print(f"{score:6.2f}  {d['path']}{tag}  {d['title']}{mark}")
+        print(f"{score:6.2f}  {d['path']}{type_tag}{rank_tag}  {d['title']}{mark}")
     return 0
 
 

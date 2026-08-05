@@ -73,6 +73,9 @@ DEFAULTS = {
     # maintenance nudge: warn at session start if analyses/reflection-*.md is older than this
     # many days (or never run). 0 disables the check.
     "reflect_nudge_days": 0,
+    # search rank multiplier applied to superseded/archived pages' BM25 score.
+    # 1.0 disables the down-rank; 0.0 would drop them from ranked results entirely.
+    "superseded_downrank": 0.4,
     # lifecycle mutations are explicit and independently configurable
     "auto_commit": True,
     "auto_push": False,
@@ -178,6 +181,25 @@ def frontmatter_values(text, key):
 
 def is_memory(f):
     return f.startswith("projects/") and "/memory/" in f
+
+
+def is_archived(f):
+    return f.startswith("archive/")
+
+
+def supersede_marker(text):
+    """True if a page carries the supersede token: a `Status: Superseded` line, or
+    `superseded_by:` in its real frontmatter block. Fences and inline code are
+    stripped first so a page that merely DOCUMENTS the convention is not itself
+    marked superseded. Shared by lint-core (chain/stale-pointer checks) and
+    wiki-query (rank down-weighting) so the two never disagree about the token.
+    """
+    stripped = re.sub(r"(?s)(```|~~~).*?(\1|\Z)", "", text)
+    stripped = re.sub(r"`[^`]*`", "", stripped)
+    if re.search(r"(?im)^\s*Status:\s*Superseded", stripped):
+        return True
+    fmblock = re.match(r"^---\n(.*?)\n---", text, re.S)
+    return bool(fmblock and re.search(r"^superseded_by:\s*\S", fmblock.group(1), re.M))
 
 
 def mention_index(kb, cfg, files):

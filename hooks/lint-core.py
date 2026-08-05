@@ -177,13 +177,7 @@ for f in files:
         issues.append(f"  UNRESOLVED {f}")
         unresolved += 1
     fmblock = re.match(r"^---\n(.*?)\n---", text, re.S)
-    # supersede token: search with fences and inline code stripped so a page that merely
-    # DOCUMENTS the convention is not marked superseded; superseded_by: must sit in the
-    # real frontmatter block
-    stripped = re.sub(r"(?s)(```|~~~).*?(\1|\Z)", "", text)
-    stripped = re.sub(r"`[^`]*`", "", stripped)
-    if (re.search(r"(?im)^\s*Status:\s*Superseded", stripped)
-            or (fmblock and re.search(r"^superseded_by:\s*\S", fmblock.group(1), re.M))):
+    if wikilib.supersede_marker(text):
         superseded.add(f)
     # collect the names (title + aliases) each content page claims, for the collision check
     if fmblock and content_page(f, b):
