@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Rubber-stamp advisory: the inverse of timestamp-drift. Templates say clearing a
 staleness flag means recording a real re-verification (`reviewed:`), never a silent
-`timestamp:` bump. This flags exactly that: a change whose diff touches nothing but a
-page's frontmatter `timestamp:` line, where the new value moves forward past both the
-old value and the date of the page's last real (non-frontmatter) edit.
+`timestamp:` bump. This flags exactly that: a change whose only semantic frontmatter
+effect is moving `timestamp:` forward, with the body untouched, where the new value
+moves past both the old value and the date of the page's last real edit. Frontmatter
+is compared as a parsed key->value map, so reordered lines or an inserted blank line
+cannot disguise the bump.
 
 Diff-driven, like stale-source.py: staged changes (`git diff --cached`) when any exist,
 else the last commit (`HEAD~1..HEAD`).
@@ -23,7 +25,6 @@ Advisory only, always exits 0. Standalone: python3 hooks/rubber-stamp.py [WIKI_R
 Ends with: RUBBER-STAMP=<n>
 """
 import datetime
-import difflib
 import os
 import re
 import subprocess
@@ -37,7 +38,7 @@ cfg = wikilib.load_config(KB)
 EXEMPT_RE = re.compile(cfg.get("drift_exempt_commit_pattern", "session auto-save"), re.I)
 content_dirs = tuple(cfg["content_dirs"])
 
-TS_LINE = re.compile(r"^timestamp:[ \t]*(.+)$")
+FM_KEY = re.compile(r"^([A-Za-z0-9_-]+):(.*)$")
 FM_RE = re.compile(r"^(---\n.*?\n---\n?)(.*)$", re.S)
 
 
@@ -69,29 +70,40 @@ def body_changed(old_text, new_text):
     return old_body != new_body
 
 
+def fm_map(fm_text):
+    """Frontmatter as {key: value}, continuation lines attached to their key and
+    trailing blank continuation stripped, so neither line order nor a cosmetic blank
+    line changes what a key is worth."""
+    entries = {}
+    key = None
+    for line in fm_text.splitlines():
+        if line.strip() == "---":
+            key = None
+            continue
+        m = FM_KEY.match(line)
+        if m:
+            key = m.group(1)
+            entries[key] = [m.group(2).strip()]
+        elif key is not None:
+            entries[key].append(line.rstrip())
+    return {k: "\n".join(v).rstrip() for k, v in entries.items()}
+
+
 def timestamp_only_bump(old_text, new_text):
-    """(old_value, new_value) if the ONLY frontmatter difference between old_text and
-    new_text is a single changed timestamp: line and the body is untouched; else None."""
+    """(old_value, new_value) if the ONLY semantic frontmatter difference between
+    old_text and new_text is the timestamp: value and the body is untouched; else
+    None."""
     if old_text is None or body_changed(old_text, new_text):
         return None
-    old_fm, _ = split_fm(old_text)
-    new_fm, _ = split_fm(new_text)
-    if old_fm == new_fm:
+    old_map = fm_map(split_fm(old_text)[0])
+    new_map = fm_map(split_fm(new_text)[0])
+    if set(old_map) != set(new_map):
         return None
-    removed, added = [], []
-    for line in difflib.ndiff(old_fm.splitlines(), new_fm.splitlines()):
-        code, content = line[:2], line[2:]
-        if code == "- ":
-            removed.append(content)
-        elif code == "+ ":
-            added.append(content)
-        # "  " (context) and "? " (hint) lines carry no change of their own.
-    if len(removed) != 1 or len(added) != 1:
+    changed = [k for k in old_map if old_map[k] != new_map[k]]
+    if changed != ["timestamp"]:
         return None
-    rm, am = TS_LINE.match(removed[0]), TS_LINE.match(added[0])
-    if not rm or not am:
-        return None
-    return rm.group(1).strip(), am.group(1).strip()
+    return ((old_map["timestamp"].splitlines() or [""])[0].strip(),
+            (new_map["timestamp"].splitlines() or [""])[0].strip())
 
 
 def last_real_edit(path, skip_hash):

@@ -599,6 +599,65 @@ assert_contains "staged forward bump flagged" "RUBBER-STAMP notes/rs-staged.md" 
 GIT_AUTHOR_DATE="2026-07-01 12:00:00 +0000" GIT_COMMITTER_DATE="2026-07-01 12:00:00 +0000" \
   git -C "$W" -c user.name=t -c user.email=t@t commit -qm "bump timestamp (staged test)" >/dev/null 2>&1
 
+echo "--- rubber-stamp advisory: reordered frontmatter cannot hide the bump ---"
+cat > "$W/notes/rs-reorder.md" <<'EOF'
+---
+type: notes
+title: RS reorder page
+timestamp: 2026-01-01
+reviewed: 2026-01-02
+synthesized_from: ../sources/beta-src.md
+---
+Links [alpha](../entities/alpha.md) so it is not a dead end.
+EOF
+git -C "$W" add -A >/dev/null 2>&1
+GIT_AUTHOR_DATE="2026-01-01 12:00:00 +0000" GIT_COMMITTER_DATE="2026-01-01 12:00:00 +0000" \
+  git -C "$W" -c user.name=t -c user.email=t@t commit -qm "add rs-reorder page" >/dev/null 2>&1
+cat > "$W/notes/rs-reorder.md" <<'EOF'
+---
+type: notes
+title: RS reorder page
+reviewed: 2026-01-02
+timestamp: 2026-07-01
+synthesized_from: ../sources/beta-src.md
+---
+Links [alpha](../entities/alpha.md) so it is not a dead end.
+EOF
+git -C "$W" add -A >/dev/null 2>&1
+GIT_AUTHOR_DATE="2026-07-01 12:00:00 +0000" GIT_COMMITTER_DATE="2026-07-01 12:00:00 +0000" \
+  git -C "$W" -c user.name=t -c user.email=t@t commit -qm "bump with reordered keys" >/dev/null 2>&1
+rs=$(python3 "$H/rubber-stamp.py" "$W")
+assert_contains "reordered-key bump flagged" "RUBBER-STAMP notes/rs-reorder.md" "$rs"
+
+echo "--- rubber-stamp advisory: an inserted blank line cannot hide the bump ---"
+cat > "$W/notes/rs-blank.md" <<'EOF'
+---
+type: notes
+title: RS blank page
+timestamp: 2026-01-01
+synthesized_from: ../sources/beta-src.md
+---
+Links [alpha](../entities/alpha.md) so it is not a dead end.
+EOF
+git -C "$W" add -A >/dev/null 2>&1
+GIT_AUTHOR_DATE="2026-01-01 12:00:00 +0000" GIT_COMMITTER_DATE="2026-01-01 12:00:00 +0000" \
+  git -C "$W" -c user.name=t -c user.email=t@t commit -qm "add rs-blank page" >/dev/null 2>&1
+cat > "$W/notes/rs-blank.md" <<'EOF'
+---
+type: notes
+title: RS blank page
+
+timestamp: 2026-07-01
+synthesized_from: ../sources/beta-src.md
+---
+Links [alpha](../entities/alpha.md) so it is not a dead end.
+EOF
+git -C "$W" add -A >/dev/null 2>&1
+GIT_AUTHOR_DATE="2026-07-01 12:00:00 +0000" GIT_COMMITTER_DATE="2026-07-01 12:00:00 +0000" \
+  git -C "$W" -c user.name=t -c user.email=t@t commit -qm "bump with inserted blank" >/dev/null 2>&1
+rs=$(python3 "$H/rubber-stamp.py" "$W")
+assert_contains "blank-line bump flagged" "RUBBER-STAMP notes/rs-blank.md" "$rs"
+
 echo "--- rubber-stamp advisory: advisory_budgets.rubber_stamp gates it ---"
 printf '{"advisory_budgets":{"rubber_stamp":0}}\n' > "$W/wiki.config.json"
 budget_out=$(bash "$H/lint.sh" "$W" 2>&1); rc=$?
@@ -606,7 +665,8 @@ assert "the just-committed rubber-stamp bump busts a 0 budget" "1" "$rc"
 assert_contains "budget failure names rubber_stamp" "BUDGET rubber_stamp=" "$budget_out"
 rm "$W/wiki.config.json"
 git -C "$W" rm -qf notes/rs-flagged.md notes/rs-content.md notes/rs-reviewed.md \
-  notes/rs-backward.md notes/rs-staged.md >/dev/null 2>&1
+  notes/rs-backward.md notes/rs-staged.md notes/rs-reorder.md notes/rs-blank.md \
+  >/dev/null 2>&1
 git -C "$W" -c user.name=t -c user.email=t@t commit -qm "clean up rubber-stamp fixtures" \
   >/dev/null 2>&1
 
