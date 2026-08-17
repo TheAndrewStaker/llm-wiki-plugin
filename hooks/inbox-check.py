@@ -19,8 +19,10 @@ A wiki that keeps a dated log elsewhere in STATE.md can ignore this one, or disa
 whole checker by leaving the caps at 0.
 
 Section = the text between the `## Inbox` heading and the next `## ` heading (or end of
-file). Items = lines starting `- ` (top-level bullets only), plus any continuation lines
-indented under them. Disabled by default so an existing wiki is unaffected until it opts in.
+file). Items = lines starting `- ` (top-level bullets only), plus continuation lines up to
+the first blank line; trailing prose in the section belongs to no item. The section word
+count covers the whole section, so `in items=` reports the part the per-item cap governs.
+Disabled by default so an existing wiki is unaffected until it opts in.
 
 Config (wiki.config.json):
     inbox_soft_max_items       max top-level `- ` items before OVER (default 0 = disabled)
@@ -70,9 +72,25 @@ for line_match in re.finditer(r"(?m)^.*$", text):
     elif entry_shape.match(line) and not (inbox_span[0] <= line_match.start() < inbox_span[1]):
         misfiled.append((current, " ".join(line[2:].split())[:90]))
 
-entries = [e for e in re.split(r"(?m)^(?=- )", section) if e.lstrip().startswith("- ")]
+def entry_body(chunk):
+    """The bullet and its continuation lines, stopping at the first blank line.
+
+    A blank line ends the list item's block, so trailing prose (a triage note, a format
+    reminder) belongs to the section and not to whichever bullet happens to precede it.
+    Without this the last entry absorbs every trailing paragraph and reads as fat.
+    """
+    out = []
+    for line in chunk.split("\n"):
+        if out and not line.strip():
+            break
+        out.append(line)
+    return "\n".join(out)
+
+
+entries = [entry_body(e) for e in re.split(r"(?m)^(?=- )", section) if e.lstrip().startswith("- ")]
 items = len(entries)
 words = len(section.split())
+item_words = sum(len(e.split()) for e in entries)
 
 fat = []
 if max_item_words > 0:
@@ -86,9 +104,9 @@ if max_item_words > 0:
 over_items = max_items > 0 and items > max_items
 over_words = max_words > 0 and words > max_words
 if over_items or over_words or fat or misfiled:
-    if over_items or over_words or fat:
+    if over_items or over_words:
         print(f"  INBOX-OVER STATE.md (items={items} max={max_items or '-'}, "
-              f"words={words} max={max_words or '-'})")
+              f"words={words} max={max_words or '-'}, in items={item_words})")
     for n, head in fat[:5]:
         print(f"  INBOX-FAT STATE.md ({n}w > {max_item_words}w) {head}")
     if len(fat) > 5:

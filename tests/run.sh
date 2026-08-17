@@ -1272,9 +1272,30 @@ assert "small entries stay OK" "INBOX=OK" "$(printf '%s\n' "$ok" | tail -1)"
 fatout=$(python3 "$H/inbox-check.py" "$IB")
 assert "one fat item trips the advisory" "INBOX=OVER" "$(printf '%s\n' "$fatout" | tail -1)"
 assert_contains "the fat item is named" "INBOX-FAT" "$fatout"
-assert "under-cap totals do not report as over" "0" "$(printf '%s\n' "$fatout" | grep -c 'items=2 max=15, words=8[0-9][0-9]')"
+# The totals line names which cap was breached, so printing it when only a per-item cap
+# fired puts in-range numbers next to the word OVER and reads as a false positive.
+assert "under-cap totals do not report as over" "0" "$(printf '%s\n' "$fatout" | grep -c 'INBOX-OVER')"
 printf '{"inbox_soft_max_items": 15, "inbox_soft_max_words": 800}\n' > "$IB/wiki.config.json"
 assert "item cap off means no INBOX-FAT" "0" "$(python3 "$H/inbox-check.py" "$IB" | grep -c 'INBOX-FAT')"
+
+echo "--- inbox: trailing prose belongs to the section, not to the last item ---"
+# A blank line ends the item's block. Without that boundary the last bullet absorbs every
+# trailing paragraph (a triage note, a format reminder) and is reported as fat.
+printf '{"inbox_soft_max_items": 15, "inbox_soft_max_words": 800, "inbox_soft_max_item_words": 40}\n' > "$IB/wiki.config.json"
+{ printf -- '---\ntype: state\ntitle: s\n---\n## Inbox\n'
+  printf -- '- short entry one\n'
+  printf -- '- short entry two\n\n'
+  printf -- '_Triaged today:'; for i in $(seq 80); do printf -- ' word'; done; printf -- '._\n'
+  printf -- '## Next\n'; } > "$IB/STATE.md"
+trail=$(python3 "$H/inbox-check.py" "$IB")
+assert "trailing prose does not make the last item fat" "0" "$(printf '%s\n' "$trail" | grep -c 'INBOX-FAT')"
+assert "a section of small items stays OK" "INBOX=OK" "$(printf '%s\n' "$trail" | tail -1)"
+{ printf -- '---\ntype: state\ntitle: s\n---\n## Inbox\n'
+  printf -- '- wrapped entry\n'
+  printf -- '  continues here'; for i in $(seq 60); do printf -- ' word'; done; printf -- '\n'
+  printf -- '## Next\n'; } > "$IB/STATE.md"
+wrapped=$(python3 "$H/inbox-check.py" "$IB")
+assert_contains "an indented continuation counts toward its item" "INBOX-FAT" "$wrapped"
 
 echo "--- inbox: an entry appended to the end of the FILE is not in the Inbox ---"
 # "append one line to STATE.md" resolves to "append at the end" for an agent that never
