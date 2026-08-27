@@ -27,7 +27,7 @@ if [ -t 1 ]; then C=$'\033[36m'; R=$'\033[31m'; G=$'\033[32m'; Z=$'\033[0m'; els
 missing_checkers=""
 for c in lint-core.py graph-check.py missed-links.py wanted-pages.py inbox-check.py \
          timestamp-drift.py rubber-stamp.py frontmatter-portability.py neighbor-scope.py \
-         vendor-check.py; do
+         vendor-check.py initiative-check.py; do
   [ -f "$H/$c" ] || missing_checkers="${missing_checkers:+$missing_checkers }$c"
 done
 if [ -n "$missing_checkers" ]; then
@@ -48,6 +48,7 @@ rubber=$(python3 "$H/rubber-stamp.py" "$KB" 2>/dev/null || true)
 port=$(python3 "$H/frontmatter-portability.py" "$KB" 2>/dev/null || true)
 neigh=$(python3 "$H/neighbor-scope.py" "$KB" 2>/dev/null || true)
 vendor=$(python3 "$H/vendor-check.py" "$KB" 2>/dev/null || true)
+init=$(python3 "$H/initiative-check.py" "$KB" 2>/dev/null || true)
 
 echo "${C}== knowledge-base lint ==${Z}"
 if [ "$core_rc" -ne 0 ]; then
@@ -66,6 +67,7 @@ printf '%s\n' "$rubber" | grep '^  RUBBER-STAMP' || true
 printf '%s\n' "$port"   | grep '^  PORT-' || true
 printf '%s\n' "$neigh"  | grep '^  NEIGHBOR' || true
 printf '%s\n' "$vendor" | grep '^  VENDOR-' || true
+printf '%s\n' "$init"   | grep '^  INIT-FAIL' || true
 
 b=$(printf '%s\n'  "$core"   | sed -n 's/^CORE broken=\([0-9]*\).*/\1/p')
 u=$(printf '%s\n'  "$core"   | sed -n 's/^CORE [^ ]* unresolved=\([0-9]*\).*/\1/p')
@@ -94,8 +96,9 @@ tb=$(printf '%s\n' "$port"   | sed -n 's/^PORT [^ ]* tab=\([0-9]*\).*/\1/p')
 pa=$(printf '%s\n' "$port"   | sed -n 's/.* ambig=\([0-9]*\).*/\1/p')
 pd=$(printf '%s\n' "$port"   | sed -n 's/.* desc=\([0-9]*\).*/\1/p')
 ng=$(printf '%s\n' "$neigh"  | sed -n 's/^NEIGHBORS=//p')
+ic=$(printf '%s\n' "$init"   | sed -n 's/^INIT-FAIL=\([0-9]*\).*/\1/p')
 
-summary_line="broken-links:${b:-?}  external:${ex:-?}/${em:-?}  ignored-targets:${ig:-?}  unresolved:${u:-?}  bad-yaml:${by:-?}  orphans:${orp:-?}  islands:${islands:-?}  missed-links:${ml:-?}  no-type:${nt:-?}  stale:${st:-?}  collisions:${col:-?}  unindexed:${unx:-?}  missing-fields:${mf:-?}  dead-ends:${de:-?}  stale-pointers:${sp:-?}  chains:${ch:-?}  wanted:${wp:-?}  inbox:${ib:-?}  drift:${dr:-?}  rubber-stamp:${rs:-?}  dup-keys:${dk:-?}  fm-tabs:${tb:-?}  ambig-yaml:${pa:-?}  desc-quality:${pd:-?}  neighbors:${ng:-?}  vendor:${vn:-?}"
+summary_line="broken-links:${b:-?}  external:${ex:-?}/${em:-?}  ignored-targets:${ig:-?}  unresolved:${u:-?}  bad-yaml:${by:-?}  orphans:${orp:-?}  islands:${islands:-?}  missed-links:${ml:-?}  no-type:${nt:-?}  stale:${st:-?}  collisions:${col:-?}  unindexed:${unx:-?}  missing-fields:${mf:-?}  dead-ends:${de:-?}  stale-pointers:${sp:-?}  chains:${ch:-?}  wanted:${wp:-?}  inbox:${ib:-?}  drift:${dr:-?}  rubber-stamp:${rs:-?}  dup-keys:${dk:-?}  fm-tabs:${tb:-?}  ambig-yaml:${pa:-?}  desc-quality:${pd:-?}  neighbors:${ng:-?}  vendor:${vn:-?}  init-fail:${ic:-?}"
 echo "${C}== summary ==${Z}  ${summary_line}"
 
 # Maintenance history: one line per run, newest 200 kept. Best-effort; must never fail the lint.
@@ -118,6 +121,11 @@ fi
 # (Counts parsed from the PORT line; if the script crashed they are empty and we stay advisory.)
 if [ -n "${dk:-}" ] && [ -n "${tb:-}" ] && { [ "$dk" -gt 0 ] || [ "$tb" -gt 0 ]; }; then
   echo "${R}FAIL${Z} (duplicate frontmatter keys or tab indentation -- parsers silently drop data)"; exit 1
+fi
+# Initiative schema, Inbox tombstone and STATE.md word budget: hard-gated the same way, not
+# through advisory_budgets (that block is a closed, hardcoded tuple of unrelated counters).
+if [ -n "${ic:-}" ] && [ "$ic" -gt 0 ]; then
+  echo "${R}FAIL${Z} (initiative schema violations -- see INIT-FAIL lines above)"; exit 1
 fi
 budget_report=$(python3 - "$KB" "${orp:--1}" "${islands:--1}" "${ml:--1}" "${col:--1}" "${unx:--1}" "${de:--1}" "${em:--1}" "${ig:--1}" "${rs:--1}" <<'PY'
 import json, os, sys

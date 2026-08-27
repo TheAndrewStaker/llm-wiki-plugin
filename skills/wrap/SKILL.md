@@ -21,7 +21,11 @@ the wiki root from `$CLAUDE_PLUGIN_OPTION_WIKI_ROOT` / `$WIKI_ROOT` / `~/wiki`.
    - analysis / good Q&A → a page in the right type-dir (`analyses/` / `concepts/` / `entities/` / `notes/`),
      with `synthesized_from:` when there is a source; cross-link with relative md links.
    - decisions → `decisions/<name>.md`; open asks you owe someone → `open-asks/<who>.md`.
-   - if the current focus changed, update `STATE.md` (append to `## Inbox`; don't reorder `Focus`/`Up next`).
+   - if an initiative's state changed, update ITS frontmatter (`assignment_status`, `next`; `priority` only
+     on Andrew's explicit statement this session, with `priority_set:` dated). `STATE.md` is generated from
+     this frontmatter (`hooks/board.py`) and is never hand-edited; a durable "what happened" note that isn't
+     a frontmatter field goes to `journal/YYYY-MM-DD.md` via `hooks/journal-append.sh` (never Write/Edit the
+     journal file directly — two sessions appending in the same second must not race).
    - link, don't duplicate.
    - a meaningful edit to an existing page bumps its `timestamp:` to today (cosmetic link/typo edits bump
      nothing; `reviewed:` = re-verification without change).
