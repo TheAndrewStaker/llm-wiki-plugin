@@ -48,9 +48,13 @@ def type_exempt(f, b):
             or wikilib.is_memory(f) or f.startswith(("sources/", "commands/")))
 
 
+orphan_exempt_dirs = tuple(cfg["orphan_exempt_dirs"]) + ("archive/", "sources/", "commands/")
+stale_exempt_dirs = tuple(cfg["stale_exempt_dirs"])
+
+
 def orphan_exempt(f, b):
     return (b in orphan_exempt_files or b.endswith("index.md") or b.endswith("SKILL.md")
-            or wikilib.is_memory(f) or f.startswith(("archive/", "sources/", "commands/")))
+            or wikilib.is_memory(f) or f.startswith(orphan_exempt_dirs))
 
 
 mdlink = re.compile(r"\]\(([^)]+)\)")
@@ -207,7 +211,7 @@ for f in files:
             issues.append(f"  NO type: {f}")
             notype += 1
     m = re.search(r"^timestamp:\s*(\d{4}-\d{2}-\d{2})", text[:1000], re.M)
-    if m:
+    if m and not f.startswith(stale_exempt_dirs):
         try:
             age = (today - datetime.date.fromisoformat(m.group(1))).days
             if age > STALE_DAYS:

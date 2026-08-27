@@ -33,6 +33,12 @@ DEFAULTS = {
     "landmark_files": ["CLAUDE.md", "STATE.md", "KNOWLEDGE.md", "ROADMAP.md", "README.md"],
     # extra basenames the user wants orphan-exempt (e.g. a people roster)
     "orphan_exempt_extra": [],
+    # path prefixes exempt from the orphan check (parallel to the hardcoded archive/sources/
+    # commands/ prefixes): a dated-log directory nothing links TO by design, e.g. "journal/"
+    "orphan_exempt_dirs": [],
+    # path prefixes exempt from the stale-timestamp check: a dated-log directory whose files
+    # are expected to age past stale_days by design, e.g. "journal/"
+    "stale_exempt_dirs": [],
     # extra basenames exempt from the type: frontmatter requirement
     "type_exempt_extra": [],
     # path prefixes that are not wiki pages: the raw layer, plus agent tooling that sits

@@ -1,9 +1,22 @@
 #!/usr/bin/env bash
-# git pre-commit gate for the wiki: run the deterministic lint. Blocks the commit only on broken
-# links or unresolved commit-gate tokens; advisory warnings (orphans, no-type, stale) pass.
-# This is the wiki's OWN copy (installed by wiki-setup into <wiki>/hooks/), so a bare clone lints
-# without the plugin present. Bypass once with: git commit --no-verify
-# Lint the repo being committed (its toplevel), NOT a configured WIKI_ROOT: a plain-terminal commit
-# has no plugin env vars set, and the gate must guard THIS repo, not default to ~/wiki.
+# git pre-commit gate for the wiki: regenerate the board, then run the deterministic lint.
+# Blocks the commit only on broken links, unresolved commit-gate tokens, or (if configured)
+# initiative-schema violations; other advisory warnings pass.
+# This is the wiki's OWN copy (installed by wiki-setup into <wiki>/hooks/), so a bare clone
+# lints without the plugin present. Bypass once with: git commit --no-verify
+# Lint the repo being committed (its toplevel), NOT a configured WIKI_ROOT: a plain-terminal
+# commit has no plugin env vars set, and the gate must guard THIS repo, not default to ~/wiki.
+set -uo pipefail
+H="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KB="$(git rev-parse --show-toplevel)"
-exec "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lint.sh" "$KB"
+
+# Regenerate before linting, so the lint (and the commit) sees a fresh board, not a stale
+# one; --write is a no-op if STATE.md carries no board markers (e.g. a wiki that hasn't
+# adopted the board yet). Stage the result unconditionally: exec below replaces this
+# process, so nothing can run after lint.sh -- staging must happen first.
+if [ -f "$H/board.py" ] && command -v python3 >/dev/null 2>&1; then
+  python3 "$H/board.py" "$KB" --write 2>/dev/null || true
+  git -C "$KB" add STATE.md 2>/dev/null || true
+fi
+
+exec "$H/lint.sh" "$KB"
