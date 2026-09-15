@@ -10,6 +10,9 @@ This project follows Keep a Changelog and intends to use Semantic Versioning aft
 - Model-neutral `wiki` CLI, deterministic lint/search, retrieval evaluation, and OKF export validation.
 - Immutable source staging with SHA-256 provenance and an explicit untrusted-content policy.
 - Hub-and-spoke pointer pages, configurable advisory budgets, and serialized lifecycle writes.
+- `meeting-notes` companion sources: extract text and screenshots from a note app entry or an
+  exported HTML note captured alongside a transcript, keeping each image marker where it sat in the
+  text and writing a readable downscaled copy (`skills/meeting-notes/scripts/extract-companion.py`).
 
 ### Changed
 

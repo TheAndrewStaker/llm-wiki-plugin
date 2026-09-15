@@ -731,6 +731,50 @@ assert_contains "transcriber stamps source-path provenance" "source-path: $MEDIA
 assert_contains "transcriber stamps source-origin when given" "source-origin: https://example.com/recordings/42" "$(cat "$MEDIA_TMP/out/meeting.vtt")"
 rm -rf "$MEDIA_TMP"
 
+echo "--- companion-source extraction ---"
+COMP_TMP="$(mktemp -d)"
+python3 - "$COMP_TMP" <<'PYEOF'
+import base64, sys
+d = sys.argv[1]
+png = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+open(d + "/local.png", "wb").write(png)
+open(d + "/note.html", "w").write(
+    "<div><h1>Sync</h1></div>"
+    '<div><img src="data:image/png;base64,' + base64.b64encode(png).decode() + '"></div>'
+    "<div>A point &amp; an entity.</div>"
+    "<ul><li>one</li><li>two</li></ul>"
+    '<div><img src="local.png"></div>'
+    '<div><img src="https://example.com/remote.png"></div>'
+    '<div><img src="gone.png"></div>')
+PYEOF
+out=$(python3 "$ROOT/skills/meeting-notes/scripts/extract-companion.py" \
+  --html "$COMP_TMP/note.html" --out "$COMP_TMP/x" --label "9/14 Sync" 2>/dev/null)
+text=$(cat "$COMP_TMP/x/9-14-sync.md")
+assert_contains "extractor reports both embedded and local-file images" "images: 2" "$out"
+assert "extractor slugifies the label" "yes" "$([ -f "$COMP_TMP/x/images/9-14-sync-01.png" ] && echo yes || echo no)"
+assert "extractor decodes a data URI to real bytes" "yes" "$([ -s "$COMP_TMP/x/images/9-14-sync-01.png" ] && echo yes || echo no)"
+assert "extractor copies a referenced local file" "yes" "$([ -s "$COMP_TMP/x/images/9-14-sync-02.png" ] && echo yes || echo no)"
+assert_contains "image marker holds the position the image had in the text" "# Sync" "$text"
+assert_contains "text keeps an in-place image marker" "[[image 1:" "$text"
+assert_contains "remote images are named, not fetched" "remote, not fetched" "$text"
+assert_contains "a missing local reference is named" "missing local file: gone.png" "$text"
+assert_contains "entities are unescaped" "A point & an entity." "$text"
+assert_contains "list items become one bullet per line" "- one
+- two" "$text"
+assert "raw markup does not reach the text" "0" "$(printf '%s' "$text" | grep -c '<div')"
+python3 "$ROOT/skills/meeting-notes/scripts/extract-companion.py" \
+  --html "$COMP_TMP/note.html" --out "$COMP_TMP/y" --max-px 0 >/dev/null 2>&1
+assert "--max-px 0 writes no readable copy" "0" "$(ls "$COMP_TMP/y/images" | grep -c '\.view\.')"
+python3 "$ROOT/skills/meeting-notes/scripts/extract-companion.py" --html "$COMP_TMP/none.html" \
+  --out "$COMP_TMP/z" >/dev/null 2>&1; rc=$?
+assert "a missing source file is a usage error" "2" "$rc"
+printf '<p>text only</p>' > "$COMP_TMP/plain.html"
+python3 "$ROOT/skills/meeting-notes/scripts/extract-companion.py" --html "$COMP_TMP/plain.html" \
+  --out "$COMP_TMP/p" >/dev/null 2>&1
+assert "no images means no images directory" "no" "$([ -d "$COMP_TMP/p/images" ] && echo yes || echo no)"
+rm -rf "$COMP_TMP"
+
 echo "--- OKF interchange export and validation ---"
 OKF_TMP="$(mktemp -d)"
 OKF_WIKI="$OKF_TMP/wiki"
