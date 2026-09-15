@@ -52,6 +52,14 @@ NOTE records where the durable copy lives — a local download is often renamed 
 the link otherwise. Never infer speaker identity from voice alone; record absent/uncertain attribution as
 a caveat.
 
+**Read any sidecar the transcript pipeline wrote next to the transcript** (low-confidence cues, a
+residual-echo report, an alignment log) before quoting anything. On a dual-channel capture, echo
+dedup is never complete: the local speaker's channel keeps cues that are really the remote speaker's
+sentence, and a reader takes them at face value. Where a residual-echo report exists, treat every cue
+it lists as unattributed and name the ones you relied on in the caveats block. Where none exists, spot
+check any quotation you attribute to one speaker against what the other channel says at that
+timestamp.
+
 ### Companion sources (material captured alongside the transcript)
 A transcript is often not the only artifact. People take notes during a meeting, usually with
 screenshots, in a note app or an exported HTML file. Those screenshots routinely carry facts the audio
