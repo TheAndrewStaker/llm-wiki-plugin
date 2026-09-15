@@ -340,6 +340,16 @@ git -C "$W" add -A >/dev/null 2>&1
 wanted=$(python3 "$H/wanted-pages.py" "$W")
 assert_contains "unresolved wikilink ranked with count" "WANTED [[gadget spec]] (2 mentions" "$wanted"
 assert "wikilink matching an existing title is resolved" "0" "$(printf '%s\n' "$wanted" | grep -c 'alpha system')"
+mkdir -p "$W/journal"
+printf -- '---\ntype: notes\ntitle: Log\n---\nShipped the [[image marker]] change.\n' > "$W/journal/2020-01-02.md"
+git -C "$W" add -A >/dev/null 2>&1
+assert_contains "a wikilink in a log is wanted by default" "WANTED [[image marker]]" "$(python3 "$H/wanted-pages.py" "$W")"
+printf '{"wanted_exempt_dirs": ["journal/"]}' > "$W/wiki.config.json"
+wanted_ex=$(python3 "$H/wanted-pages.py" "$W")
+assert "wanted_exempt_dirs skips that directory" "0" "$(printf '%s\n' "$wanted_ex" | grep -c 'image marker')"
+assert_contains "exemption does not suppress other directories" "WANTED [[gadget spec]]" "$wanted_ex"
+rm -f "$W/wiki.config.json"
+git -C "$W" rm -qf journal/2020-01-02.md >/dev/null 2>&1
 git -C "$W" rm -qf notes/wishlist.md >/dev/null 2>&1
 
 echo "--- shared alias parsing + fenced supersede example (review fixes) ---"

@@ -2,7 +2,8 @@
 """Wanted-pages report (the red-link ranking every big wiki grows): unresolved
 [[name]] wikilinks are the deliberate marker for "a page worth writing"; this ranks
 them by how often they are mentioned, so the most-wanted pages get written first
-(MediaWiki's Special:WantedPages, Wikipedia's Most-wanted articles).
+(MediaWiki's Special:WantedPages, Wikipedia's Most-wanted articles). Directories listed in
+`wanted_exempt_dirs` are skipped.
 
 A [[name]] is RESOLVED (not wanted) when a tracked page answers to it: its basename
 (without .md), its title:, or one of its aliases: matches case-insensitively (spaces
@@ -21,7 +22,10 @@ import wikilib
 
 KB = wikilib.resolve_root(sys.argv[1] if len(sys.argv) > 1 else None)
 os.chdir(KB)
-files = wikilib.git_files(KB)
+# A dated log entry records what happened; it is not where the wiki declares a page
+# worth writing, so [[...]] there is prose syntax rather than a marker.
+exempt = tuple(wikilib.load_config(KB)["wanted_exempt_dirs"])
+files = [f for f in wikilib.git_files(KB) if not exempt or not f.startswith(exempt)]
 
 
 def norm(s):
