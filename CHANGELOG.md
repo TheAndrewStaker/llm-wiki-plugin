@@ -16,5 +16,7 @@ This project follows Keep a Changelog and intends to use Semantic Versioning aft
 
 ### Changed
 
+- `wanted-pages` honors `wanted_exempt_dirs`. A dated log entry records what happened; it is not
+  where the wiki declares a page worth writing, so `[[...]]` there is prose syntax, not a marker.
 - Network push is now opt-in (`auto_push: false` by default).
 - The project describes working trees as OKF-aligned and exported bundles as the interchange boundary.
