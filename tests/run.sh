@@ -1775,7 +1775,7 @@ assert_contains "waiting-on-Andrew queue lists Self B's ask" "self-b · merge or
 assert_contains "waiting-on-Andrew queue also lists the open-asks/andrew.md item" \
   "(open-asks/andrew) one file-level ask" "$board"
 assert_contains "actionable-now pointer skips the row waiting on Andrew" \
-  "Actionable now for demo-repo: #1 Pitch A" "$board"
+  "Where demo-repo stands: #1 Pitch A" "$board"
 assert "off-board.md never appears on the board" "0" "$(printf '%s' "$board" | grep -c 'Off Board')"
 
 echo "--- board.py --write replaces only the marked block, idempotently ---"
