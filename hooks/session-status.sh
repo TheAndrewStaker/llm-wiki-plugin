@@ -4,7 +4,7 @@
 #   - pulls (rebase, autostash) if an upstream is configured, bounded so a stalled remote
 #     can't hang session start, so a second machine starts current
 #   - injects STATE.md's generated board (priority-ranked from initiative frontmatter,
-#     the single source; see hooks/board.py) plus one actionable-now pointer for the
+#     the single source; see hooks/board.py) plus one where-it-stands pointer for the
 #     session's own repo
 #   - surfaces wiki-health problems (failed auto-commit/push, missing lint gate)
 #   - young-wiki hint (capture, don't query) + per-initiative freshness nudge (protect

@@ -9,7 +9,7 @@ Usage:
   board.py [WIKI_ROOT]                  print the board to stdout
   board.py [WIKI_ROOT] --write          replace the block between <!-- board:begin -->
                                          and <!-- board:end --> in STATE.md
-  board.py [WIKI_ROOT] --repo NAME      also print one "Actionable now for NAME" line,
+  board.py [WIKI_ROOT] --repo NAME      also print one "Where NAME stands" line,
                                          the first Now/Next row not waiting on anyone whose
                                          repos (if set) contains NAME or carries no repos
 """
@@ -195,7 +195,7 @@ def build(kb, repo=None):
                 continue
             if i["repos"] and repo not in i["repos"]:
                 continue
-            pointer = f"Actionable now for {repo}: #{i['rank']} {i['title']} → {i['next']}"
+            pointer = f"Where {repo} stands: #{i['rank']} {i['title']} → {i['next']}"
             break
     return board, pointer
 
