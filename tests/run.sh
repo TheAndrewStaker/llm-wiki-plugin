@@ -1724,6 +1724,45 @@ assert_contains "an over-budget STATE.md is flagged" "hand-written: " "$out"
 assert_contains "the flag names the cap" "w > 40w cap" "$out"
 git -C "$IW" checkout -q -- STATE.md
 
+echo "--- initiative-caps.py: reports a breach at the edit, not at the commit ---"
+cat > "$IW/initiatives/long-next.md" <<'EOF'
+---
+type: initiative
+title: Long Next
+timestamp: 2026-08-26
+assignment_kind: self
+assignment_status: active
+next: this next action has way more than five words in it
+waiting_on: none
+---
+body [i](index.md)
+EOF
+out=$(python3 "$H/initiative-caps.py" "$IW/initiatives/long-next.md" "$IW" 2>&1); rc=$?
+assert "an over-cap field exits 2, which is what reaches the agent" "2" "$rc"
+assert_contains "it names the field and both numbers" "next: 11 words > 5 cap" "$out"
+assert_contains "it says what the breach will cost" "hard-fail the commit" "$out"
+
+out=$(python3 "$H/initiative-caps.py" "$IW/initiatives/pitch-a.md" "$IW" 2>&1); rc=$?
+assert "a compliant page says nothing" "" "$out"
+assert "and exits 0" "0" "$rc"
+
+python3 "$H/initiative-caps.py" "$IW/initiatives/off-board.md" "$IW" >/dev/null 2>&1
+assert "board: false is exempt here as well" "0" "$?"
+
+python3 "$H/initiative-caps.py" "$IW/STATE.md" "$IW" >/dev/null 2>&1
+assert "a file outside initiatives/ is ignored" "0" "$?"
+
+python3 "$H/initiative-caps.py" "$IW/initiatives/index.md" "$IW" >/dev/null 2>&1
+assert "the initiatives index is ignored" "0" "$?"
+
+printf '{"tool_input":{"file_path":"%s"}}' "$IW/initiatives/long-next.md" \
+  | WIKI_ROOT="$IW" python3 "$H/initiative-caps.py" >/dev/null 2>&1
+assert "the stdin hook payload carries the same verdict" "2" "$?"
+
+printf 'not json' | WIKI_ROOT="$IW" python3 "$H/initiative-caps.py" >/dev/null 2>&1
+assert "a malformed payload never fails the edit" "0" "$?"
+rm -f "$IW/initiatives/long-next.md"
+
 echo "--- board.py: rank ordering, defaults, waiting skip, repo filter, stale-rank marker ---"
 board=$(python3 "$H/board.py" "$IW" --repo demo-repo)
 assert_contains "current-cycle pitch defaults to rank 1" "1. [pitch" "$board"
