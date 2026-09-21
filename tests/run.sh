@@ -993,7 +993,60 @@ printf 'stale failure\n' > "$AUTO_TMP/.auto-commit-failed"
 printf '{}\n' | WIKI_ROOT="$AUTO_TMP" bash "$H/auto-commit.sh" >/dev/null 2>&1
 assert "clean tree clears a resolved-by-hand failure breadcrumb" "no" \
   "$([ -e "$AUTO_TMP/.auto-commit-failed" ] && echo yes || echo no)"
+
+# A dirty tree that stages to nothing: another committer took the same changes, or the
+# difference was stat-only. `git commit` calls that a failure, and a Stop hook that passes
+# the verdict on tells the author their session broke when nothing did.
+printf 'racing\n' >> "$AUTO_TMP/page.md"
+git -C "$AUTO_TMP" add -A
+git -C "$AUTO_TMP" commit -qm "another committer got there first"
+before=$(git -C "$AUTO_TMP" rev-parse HEAD)
+touch "$AUTO_TMP/page.md"
+printf '{}\n' | WIKI_ROOT="$AUTO_TMP" bash "$H/auto-commit.sh" >/dev/null 2>&1; rc=$?
+assert "a tree that stages to nothing is a no-op, not a failure" "0" "$rc"
+assert "staging to nothing writes no breadcrumb" "no" \
+  "$([ -e "$AUTO_TMP/.auto-commit-failed" ] && echo yes || echo no)"
+assert "staging to nothing creates no commit" "$before" "$(git -C "$AUTO_TMP" rev-parse HEAD)"
+
+# A blocked commit still has to be loud, or the branch above would swallow the gate.
+mkdir -p "$AUTO_TMP/.git/hooks"
+cat > "$AUTO_TMP/.git/hooks/pre-commit" <<'HOOK'
+#!/usr/bin/env bash
+echo "lint says no" >&2
+exit 1
+HOOK
+chmod +x "$AUTO_TMP/.git/hooks/pre-commit"
+printf 'a real change\n' >> "$AUTO_TMP/page.md"
+printf '{}\n' | WIKI_ROOT="$AUTO_TMP" bash "$H/auto-commit.sh" >/dev/null 2>&1; rc=$?
+assert "a blocked commit still fails loudly" "1" "$rc"
+assert "a blocked commit leaves the breadcrumb" "yes" \
+  "$([ -e "$AUTO_TMP/.auto-commit-failed" ] && echo yes || echo no)"
 rm -rf "$AUTO_TMP"
+
+echo "--- pre-commit stages what its lint writes, so a commit leaves a clean tree ---"
+# The lint is stubbed to the one behaviour under test: it appends to the history file the
+# way lint.sh does, and passes. An unstaged write there leaves the tree dirty the moment
+# the commit ends, which is what turns one edit into a commit per turn forever.
+PC_TMP="$(mktemp -d)"
+git -C "$PC_TMP" init -q
+git -C "$PC_TMP" config user.name test
+git -C "$PC_TMP" config user.email test@example.invalid
+mkdir -p "$PC_TMP/hooks"
+cp "$H/pre-commit" "$PC_TMP/hooks/pre-commit"
+cat > "$PC_TMP/hooks/lint.sh" <<'STUB'
+#!/usr/bin/env bash
+mkdir -p "$1/.compendium"
+printf 'ran\n' >> "$1/.compendium/lint-history.tsv"
+exit 0
+STUB
+chmod +x "$PC_TMP/hooks/pre-commit" "$PC_TMP/hooks/lint.sh"
+printf 'page\n' > "$PC_TMP/page.md"
+git -C "$PC_TMP" add -A
+git -C "$PC_TMP" -c core.hooksPath=hooks commit -qm first >/dev/null 2>&1
+assert "the commit carries the lint line its own run wrote" "yes" \
+  "$(git -C "$PC_TMP" ls-tree -r --name-only HEAD | grep -q 'lint-history' && echo yes || echo no)"
+assert "and the tree is clean afterwards" "" "$(git -C "$PC_TMP" status --porcelain)"
+rm -rf "$PC_TMP"
 
 echo "--- vendored engine: the manifest is current, and drift is visible ---"
 assert "the committed manifest matches the tree" "0" \
