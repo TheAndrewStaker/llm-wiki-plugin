@@ -60,15 +60,28 @@ if git diff --quiet && git diff --cached --quiet && [ -z "$(git ls-files --other
   rm -f "$KB/.auto-commit-failed"
 else
   git add -A
-  if out=$(git commit -q -m "session auto-save: wiki findings ($(date +%Y-%m-%d))" 2>&1); then
+  # The check above can see a dirty tree that stages to nothing: another committer took the
+  # same changes in between, or the difference was stat-only. `git commit` calls that a
+  # failure and exits 1, which is a false alarm this hook must not raise, because a Stop
+  # hook exiting non-zero is reported to the author as a broken session.
+  if git diff --cached --quiet; then
+    rm -f "$KB/.auto-commit-failed"
+  elif out=$(git commit -q -m "session auto-save: wiki findings ($(date +%Y-%m-%d))" 2>&1); then
     rm -f "$KB/.auto-commit-failed"
   else
-    {
-      echo "auto-commit failed $(date '+%Y-%m-%d %H:%M') -- commit aborted (lint gate?); changes remain uncommitted"
-      printf '%s\n' "$out"
-    } > "$KB/.auto-commit-failed"
-    echo "wiki auto-commit FAILED (lint gate?) -- see $KB/.auto-commit-failed; run the wiki lint" >&2
-    exit 1
+    case "$out" in
+      *"nothing to commit"*|*"no changes added to commit"*)
+        rm -f "$KB/.auto-commit-failed"
+        ;;
+      *)
+        {
+          echo "auto-commit failed $(date '+%Y-%m-%d %H:%M') -- commit aborted, changes remain uncommitted"
+          printf '%s\n' "$out"
+        } > "$KB/.auto-commit-failed"
+        echo "wiki auto-commit FAILED -- see $KB/.auto-commit-failed; run the wiki lint" >&2
+        exit 1
+        ;;
+    esac
   fi
 fi
 

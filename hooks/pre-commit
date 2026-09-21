@@ -12,11 +12,19 @@ KB="$(git rev-parse --show-toplevel)"
 
 # Regenerate before linting, so the lint (and the commit) sees a fresh board, not a stale
 # one; --write is a no-op if STATE.md carries no board markers (e.g. a wiki that hasn't
-# adopted the board yet). Stage the result unconditionally: exec below replaces this
-# process, so nothing can run after lint.sh -- staging must happen first.
+# adopted the board yet).
 if [ -f "$H/board.py" ] && command -v python3 >/dev/null 2>&1; then
   python3 "$H/board.py" "$KB" --write 2>/dev/null || true
   git -C "$KB" add STATE.md 2>/dev/null || true
 fi
 
-exec "$H/lint.sh" "$KB"
+# Run rather than exec: lint.sh appends a line to .compendium/lint-history.tsv, and leaving
+# that write unstaged leaves the tree dirty the moment this commit finishes. An auto-commit
+# then commits it, its own lint appends another line, and the wiki gains one commit per turn
+# forever, carrying nothing but the previous run's line. Staging the line into the commit
+# that produced it ends that. A wiki that does not track the file is unaffected: the add
+# fails and is ignored.
+"$H/lint.sh" "$KB"
+rc=$?
+git -C "$KB" add .compendium/lint-history.tsv 2>/dev/null || true
+exit "$rc"
