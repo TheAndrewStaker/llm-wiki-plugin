@@ -74,7 +74,7 @@ if schema:
         if waiting and wo not in waiting:
             issues.append(f"  INIT-FAIL {f} waiting_on: '{wo}' not in {sorted(waiting)}")
         if wo != "none" and not ask:
-            issues.append(f"  INIT-FAIL {f} ask: required because waiting_on is not '{wo}'")
+            issues.append(f"  INIT-FAIL {f} ask: required because waiting_on is '{wo}', not 'none'")
         if summary_max and summary and wc(summary) > summary_max:
             issues.append(f"  INIT-FAIL {f} summary: {wc(summary)}w > {summary_max}w cap")
         if next_max and nxt and wc(nxt) > next_max:

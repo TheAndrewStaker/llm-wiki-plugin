@@ -1363,6 +1363,23 @@ assert_contains "a scalar key still reads" "scalar: 2026-01-01" "$fv"
 assert_contains "a block-list key yields no scalar" "blocklist-scalar: None" "$fv"
 assert_contains "a block-list key yields its items" "blocklist-values: ../sources/a.md" "$fv"
 
+echo "--- frontmatter_value reads a key past a long flow list ---"
+fv=$(python3 - "$H" <<'PYEOF'
+import sys
+sys.path.insert(0, sys.argv[1])
+import wikilib
+prs = ", ".join('"org/repo#%d"' % n for n in range(100))
+page = "---\ntype: initiative\nprs: [" + prs + "]\nask: \"who decides?\"\n---\nask: body line\n"
+fm = page.split("---\n")[1]
+print("page:", wikilib.frontmatter_value(page, "ask"))
+print("bare:", wikilib.frontmatter_value(fm, "ask"))
+print("body:", wikilib.frontmatter_value("---\ntype: x\n---\nask: body\n", "ask"))
+PYEOF
+)
+assert_contains "a late key reads from a whole page" 'page: "who decides?"' "$fv"
+assert_contains "a late key reads from a bare block" 'bare: "who decides?"' "$fv"
+assert_contains "a body line is not frontmatter" "body: None" "$fv"
+
 echo "--- inbox: one fat item is distinct from many small ones ---"
 IB="$(mktemp -d)"
 git -C "$IB" init -q

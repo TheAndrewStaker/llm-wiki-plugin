@@ -146,7 +146,11 @@ def read(kb, rel):
 def frontmatter_value(text, key):
     # [ \t]* not \s*: \s crosses the newline, so a key with a block list below it returns
     # that list's first item (marker attached), and an empty key returns the NEXT key's value.
-    m = re.search(r"^" + re.escape(key) + r":[ \t]*(.+)$", text[:1200], re.M)
+    # A whole page is narrowed to its frontmatter block; a bare block is read in full, so a
+    # key past any fixed offset (e.g. below a long flow list) is still found.
+    block = re.match(r"^---\n(.*?)\n---", text, re.S)
+    scope = block.group(1) if block else text
+    m = re.search(r"^" + re.escape(key) + r":[ \t]*(.+)$", scope, re.M)
     return m.group(1).strip() if m else None
 
 
