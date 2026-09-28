@@ -25,6 +25,8 @@ This project follows Keep a Changelog and intends to use Semantic Versioning aft
   transcript wrote a failing page gets exit 2 once with the failing lines; any other session
   commits everything else, holds the failing pages back, and stays quiet. The pre-commit gate
   judges the staged version of each page (`WIKI_CHECK_INDEX=1`) so a held page does not block.
+- The personal ask queue is configurable: `initiative_schema.owner` names the `waiting_on`
+  value and the `open-asks/<owner>.md` file, `owner_label` the board heading. Default `owner`.
 - `frontmatter_value` reads the whole frontmatter block instead of its first 1200 characters,
   so a key below a long flow list is no longer read as absent.
 

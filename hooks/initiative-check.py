@@ -42,6 +42,7 @@ if schema:
     queue_max = schema.get("queue_max", 0)
     state_budget = schema.get("state_word_budget", 0)
 
+    owner, _ = wikilib.queue_owner(schema)
     owner_asks = 0
     for f in wikilib.git_files(KB):
         if not f.startswith("initiatives/") or os.path.basename(f) == "index.md":
@@ -57,14 +58,14 @@ if schema:
             continue
         for field, msg in wikilib.initiative_issues(schema, fm):
             issues.append(f"  INIT-FAIL {f} {field}: {msg}")
-        if (wikilib.frontmatter_value(fm, "waiting_on") or "none") == "owner":
+        if (wikilib.frontmatter_value(fm, "waiting_on") or "none") == owner:
             owner_asks += 1
 
-    oa_text = src("open-asks/owner.md")
+    oa_text = src(f"open-asks/{owner}.md")
     oa_items = len(re.findall(r"(?m)^- ", oa_text))
     queue_total = owner_asks + oa_items
     if queue_max and queue_total > queue_max:
-        issues.append(f"  INIT-FAIL open-asks/owner.md queue: {queue_total} items > {queue_max} cap")
+        issues.append(f"  INIT-FAIL open-asks/{owner}.md queue: {queue_total} items > {queue_max} cap")
 
     state_text = src("STATE.md")
     if state_text:

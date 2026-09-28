@@ -151,15 +151,16 @@ def build(kb, repo=None):
     hdr += " · priority is a rank you state, 1-9)"
     lines.append(hdr)
 
-    waiting_owner = [i for i in active if i["waiting_on"] == "owner"]
-    oa_text = wikilib.read(kb, "open-asks/owner.md")
+    owner, owner_label = wikilib.queue_owner(cfg.get("initiative_schema"))
+    waiting_owner = [i for i in active if i["waiting_on"] == owner]
+    oa_text = wikilib.read(kb, f"open-asks/{owner}.md")
     oa_items = re.findall(r"(?m)^- (.+)$", oa_text)
     queue_total = len(waiting_owner) + len(oa_items)
-    lines.append(f"Waiting on Owner ({queue_total}):")
+    lines.append(f"Waiting on {owner_label} ({queue_total}):")
     for i in waiting_owner:
         lines.append(f"- {i['slug']} · {i['ask']}")
     for line in oa_items:
-        lines.append(f"- (open-asks/owner) {line}")
+        lines.append(f"- (open-asks/{owner}) {line}")
 
     shown = 0
     lines.append("Now:")

@@ -154,6 +154,13 @@ def frontmatter_value(text, key):
     return m.group(1).strip() if m else None
 
 
+def queue_owner(schema):
+    """(waiting_on key, display label) for the wiki owner's personal queue; the owner's
+    file-level asks live at open-asks/<key>.md."""
+    key = (schema or {}).get("owner", "owner")
+    return key, (schema or {}).get("owner_label", key.capitalize())
+
+
 def initiative_issues(schema, fm):
     """Per-page initiative schema violations as (field, message) pairs. `fm` is the bare
     frontmatter block. Shared by the commit gate and the frontmatter writer so the two

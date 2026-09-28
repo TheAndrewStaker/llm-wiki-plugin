@@ -1844,8 +1844,23 @@ assert "done initiative does not appear as a ranked row" "0" \
 assert_contains "owner queue lists Self B's ask" "self-b · merge or close" "$board"
 assert_contains "owner queue also lists the open-asks/owner.md item" \
   "(open-asks/owner) one file-level ask" "$board"
+assert_contains "the unconfigured owner label defaults from its key" "Waiting on Owner (" "$board"
 assert_contains "actionable-now pointer skips the row waiting on the owner" \
   "Where demo-repo stands: #1 Pitch A" "$board"
+python3 - "$IW/wiki.config.json" <<'PYEOF'
+import json, sys
+p = sys.argv[1]; c = json.load(open(p))
+c["initiative_schema"].update({"owner": "data", "owner_label": "Data team"})
+json.dump(c, open(p, "w"))
+PYEOF
+board2=$(python3 "$H/board.py" "$IW")
+assert_contains "owner and owner_label come from initiative_schema" "Waiting on Data team (" "$board2"
+python3 - "$IW/wiki.config.json" <<'PYEOF'
+import json, sys
+p = sys.argv[1]; c = json.load(open(p))
+for k in ("owner", "owner_label"): c["initiative_schema"].pop(k)
+json.dump(c, open(p, "w"))
+PYEOF
 assert "off-board.md never appears on the board" "0" "$(printf '%s' "$board" | grep -c 'Off Board')"
 
 echo "--- board.py --write replaces only the marked block, idempotently ---"
