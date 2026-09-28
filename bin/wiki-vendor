@@ -28,7 +28,7 @@ MANIFEST = os.path.join(ROOT, "hooks", "VENDOR.manifest")
 # Lifecycle hooks run from the plugin path with plugin env set; they are never vendored.
 # Everything else under hooks/ is engine, plus the CLIs a bare clone needs.
 NOT_VENDORED = {"auto-commit.sh", "session-status.sh", "session-touched.py", "hooks.json", "VENDOR.manifest"}
-BIN = ["wiki-query", "wiki-eval", "wiki-okf", "wiki-links", "wiki-fm"]
+BIN = ["wiki-query", "wiki-eval", "wiki-okf", "wiki-links", "wiki-fm", "wiki-commit"]
 
 
 def version():

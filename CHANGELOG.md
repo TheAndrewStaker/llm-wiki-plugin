@@ -25,6 +25,13 @@ This project follows Keep a Changelog and intends to use Semantic Versioning aft
   transcript wrote a failing page gets exit 2 once with the failing lines; any other session
   commits everything else, holds the failing pages back, and stays quiet. The pre-commit gate
   judges the staged version of each page (`WIKI_CHECK_INDEX=1`) so a held page does not block.
+- `bin/wiki-commit`: commits named paths (or `--all`) through a private index and retries on
+  a moved HEAD, so parallel sessions stop committing or unstaging each other's staging. The
+  Stop hook commits through it. `agent_commit_guard` (opt-in; `agent_env_vars`, default
+  `CLAUDECODE`) makes pre-commit refuse a bare `git commit` from an agent shell.
+- Lint history moved to `<git-dir>/compendium/lint-history.tsv`: machine-local, never staged, so
+  a commit no longer leaves its own history line dirty. `session-status` reads either location.
+- `board.py --write` leaves `STATE.md` alone when only the generated-at stamp would change.
 - Auto-commits lint in gate-only mode (`WIKI_LINT_GATE_ONLY=1`): only the checks that can fail
   the commit run, plus any advisory checker a configured budget gates. It prints only failing
   lines and writes no history line. Deliberate commits still run the full lint.

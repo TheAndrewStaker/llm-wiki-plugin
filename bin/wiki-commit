@@ -1,0 +1,127 @@
+#!/usr/bin/env python3
+"""wiki-commit — commit named wiki paths through a private index.
+
+The wiki's git index is shared by every session working in it, so `git add` then `git commit`
+commits whatever any session had staged, and a session's staging can be taken by another's
+commit. wiki-commit never reads or writes the shared staging: it builds a temporary index from
+HEAD, adds only the given paths (or everything with --all), commits from it, and retries on a
+new HEAD if another commit landed in between. Afterwards it moves the shared index entries for
+the committed paths to the new HEAD, unless another session has staged a different version.
+
+Usage:
+    wiki-commit -m MESSAGE PATH...
+    wiki-commit -m MESSAGE --all
+    wiki-commit ... [--root DIR]
+
+Root: --root, else the git toplevel of the current directory when it holds wiki.config.json,
+else $CLAUDE_PLUGIN_OPTION_WIKI_ROOT, else $WIKI_ROOT, else ~/wiki.
+Exit: 0 committed or nothing to commit; 1 the commit was refused (hook output printed).
+"""
+import argparse
+import os
+import subprocess
+import sys
+import tempfile
+import time
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(HERE), "hooks"))
+import wikilib  # noqa: E402
+
+RACE = ("cannot lock ref", "but expected", "index.lock", "Unable to create")
+
+
+def git(kb, *args, env=None, check=False):
+    r = subprocess.run(["git", *args], cwd=kb, capture_output=True, text=True, env=env)
+    if check and r.returncode:
+        raise SystemExit(f"wiki-commit: git {' '.join(args)} failed: {r.stderr.strip()}")
+    return r
+
+
+def root(arg):
+    if arg:
+        return os.path.expanduser(arg)
+    top = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True,
+                         text=True).stdout.strip()
+    if top and os.path.isfile(os.path.join(top, "wiki.config.json")):
+        return top
+    return wikilib.resolve_root(None)
+
+
+def blob(kb, spec):
+    r = git(kb, "rev-parse", "-q", "--verify", spec)
+    return r.stdout.strip() if r.returncode == 0 else None
+
+
+def shared_blob(kb, path):
+    out = git(kb, "ls-files", "-s", "--", path).stdout.split()
+    return out[1] if len(out) >= 2 else None
+
+
+def attempt(kb, message, paths, everything):
+    base = blob(kb, "HEAD")
+    fd, idx = tempfile.mkstemp(prefix="wiki-commit-index.")
+    os.close(fd)
+    os.unlink(idx)
+    env = dict(os.environ, GIT_INDEX_FILE=idx, WIKI_COMMIT="1")
+    try:
+        git(kb, "read-tree", "HEAD", env=env, check=True)
+        add = ["add", "-A"] if everything else ["add", "-A", "--", *paths]
+        r = git(kb, *add, env=env)
+        if r.returncode:
+            return "fail", r.stderr.strip()
+        if git(kb, "diff", "--cached", "--quiet", "HEAD", env=env).returncode == 0:
+            return "empty", ""
+        r = git(kb, "commit", "-q", "-m", message, env=env)
+        if r.returncode:
+            text = (r.stdout + r.stderr).strip()
+            if blob(kb, "HEAD") != base or any(m in text for m in RACE):
+                return "race", text
+            return "fail", text
+        return "ok", base
+    finally:
+        for p in (idx, idx + ".lock"):
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
+
+
+def sync_shared(kb, base):
+    """Point the shared index at HEAD for each committed path it still holds at the old
+    version, so the session's own commit does not show as staged-in-reverse."""
+    for path in git(kb, "diff", "--name-only", base, "HEAD").stdout.splitlines():
+        cur = shared_blob(kb, path)
+        if cur is None or cur == blob(kb, f"{base}:{path}") or cur == blob(kb, f"HEAD:{path}"):
+            git(kb, "reset", "-q", "HEAD", "--", path)
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="wiki-commit")
+    ap.add_argument("-m", "--message", required=True)
+    ap.add_argument("--all", action="store_true")
+    ap.add_argument("--root")
+    ap.add_argument("paths", nargs="*")
+    a = ap.parse_args()
+    if not a.all and not a.paths:
+        ap.error("give PATH... or --all")
+    kb = root(a.root)
+    for n in range(6):
+        status, detail = attempt(kb, a.message, a.paths, a.all)
+        if status == "ok":
+            sync_shared(kb, detail)
+            print(f"committed {blob(kb, 'HEAD')[:8]}: {a.message.splitlines()[0]}")
+            return 0
+        if status == "empty":
+            print("nothing to commit")
+            return 0
+        if status == "fail":
+            print(detail, file=sys.stderr)
+            return 1
+        time.sleep(0.5 * (n + 1))
+    print("wiki-commit: HEAD kept moving; nothing committed", file=sys.stderr)
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

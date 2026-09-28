@@ -130,8 +130,10 @@ echo "${C}== summary ==${Z}  ${summary_line}"
 # Gate-only restores stdout here, so only the verdict lines below print.
 [ "$gate_only" = "1" ] && exec 1>&3 3>&-
 # Maintenance history: one line per run, newest 200 kept. Best-effort; must never fail the lint.
+# Kept inside the git dir in a repo, so it is machine-local and no commit ever carries it.
 [ "$gate_only" = "1" ] || {
-  hist_dir="$KB/.compendium"
+  gd=$(git -C "$KB" rev-parse --absolute-git-dir 2>/dev/null || true)
+  hist_dir="${gd:+$gd/compendium}"; hist_dir="${hist_dir:-$KB/.compendium}"
   mkdir -p "$hist_dir" 2>/dev/null
   hist_file="$hist_dir/lint-history.tsv"
   ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"

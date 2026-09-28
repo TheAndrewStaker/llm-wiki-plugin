@@ -69,19 +69,22 @@ if git diff --quiet && git diff --cached --quiet && [ -z "$(git ls-files --other
   # breadcrumb here too, or fixing it manually leaves session-status warning forever.
   rm -f "$KB/.auto-commit-failed"
 else
-  git add -A
+  # A private index: the shared one belongs to every session in this wiki, and this hook must
+  # neither commit another session's staging nor unstage it.
+  view=$(mktemp "${TMPDIR:-/tmp}/wiki-auto-index.XXXXXX"); rm -f "$view"
+  GIT_INDEX_FILE="$view" git read-tree HEAD
+  GIT_INDEX_FILE="$view" git add -A
 
   if [ -f "$H/initiative-check.py" ]; then
-    fails=$(WIKI_CHECK_INDEX=1 python3 "$H/initiative-check.py" "$KB" 2>/dev/null | grep '^  INIT-FAIL ' || true)
+    fails=$(GIT_INDEX_FILE="$view" WIKI_CHECK_INDEX=1 python3 "$H/initiative-check.py" "$KB" 2>/dev/null | grep '^  INIT-FAIL ' || true)
     if [ -n "$fails" ]; then
       files=$(printf '%s\n' "$fails" | awk '{print $2}' | sort -u)
-      mine=""
       if [ -n "$transcript" ] && [ -f "$transcript" ]; then
         # shellcheck disable=SC2086
         mine=$(python3 "$H/session-touched.py" "$transcript" "$KB" $files 2>/dev/null || true)
       fi
       if [ -n "$mine" ] && [ "$event" = "Stop" ] && [ "$stop_active" = "false" ]; then
-        git reset -q
+        rm -f "$view"
         {
           echo "wiki: pages this session wrote fail the commit gate, so nothing was committed:"
           printf '%s\n' "$fails" | grep -F -f <(printf '%s\n' "$mine")
@@ -90,34 +93,35 @@ else
         } >&2
         exit 2
       fi
-      # shellcheck disable=SC2086
-      git reset -q -- $files 2>/dev/null || true
       held=$files
     fi
   fi
 
-  # The check above can see a dirty tree that stages to nothing: another committer took the
-  # same changes in between, or the difference was stat-only. `git commit` calls that a
-  # failure and exits 1, which is a false alarm this hook must not raise, because a Stop
-  # hook exiting non-zero is reported to the author as a broken session.
-  if git diff --cached --quiet; then
-    rm -f "$KB/.auto-commit-failed"
-  elif out=$(WIKI_LINT_GATE_ONLY=1 git commit -q -m "session auto-save: wiki findings ($(date +%Y-%m-%d))" 2>&1); then
+  changed=$(GIT_INDEX_FILE="$view" git diff --cached --name-only --no-renames HEAD)
+  rm -f "$view"
+  if [ -n "$held" ]; then
+    changed=$(printf '%s\n' "$changed" | grep -vxF -f <(printf '%s\n' "$held") || true)
+  fi
+
+  # A dirty tree can stage to nothing: another committer took the same changes in between,
+  # or the difference was stat-only. That is not a failure, and a Stop hook exiting non-zero
+  # is reported to the author as a broken session.
+  if [ -z "$changed" ]; then
     rm -f "$KB/.auto-commit-failed"
   else
-    case "$out" in
-      *"nothing to commit"*|*"no changes added to commit"*)
-        rm -f "$KB/.auto-commit-failed"
-        ;;
-      *)
-        {
-          echo "auto-commit failed $(date '+%Y-%m-%d %H:%M') -- commit aborted, changes remain uncommitted"
-          printf '%s\n' "$out"
-        } > "$KB/.auto-commit-failed"
-        echo "wiki auto-commit FAILED -- see $KB/.auto-commit-failed; run the wiki lint" >&2
-        exit 1
-        ;;
-    esac
+    paths=()
+    while IFS= read -r p; do [ -n "$p" ] && paths+=("$p"); done <<< "$changed"
+    if out=$(WIKI_LINT_GATE_ONLY=1 python3 "$H/../bin/wiki-commit" --root "$KB" \
+          -m "session auto-save: wiki findings ($(date +%Y-%m-%d))" -- "${paths[@]}" 2>&1); then
+      rm -f "$KB/.auto-commit-failed"
+    else
+      {
+        echo "auto-commit failed $(date '+%Y-%m-%d %H:%M') -- commit aborted, changes remain uncommitted"
+        printf '%s\n' "$out"
+      } > "$KB/.auto-commit-failed"
+      echo "wiki auto-commit FAILED -- see $KB/.auto-commit-failed; run the wiki lint" >&2
+      exit 1
+    fi
   fi
 fi
 

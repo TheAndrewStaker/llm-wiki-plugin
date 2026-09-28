@@ -87,6 +87,10 @@ links to the pages used); **file good answers back as pages** so explorations co
 field=value ...`, which validates against `initiative_schema` before writing, refuses an over-cap or
 off-enum value with the count, and regenerates the board. `wiki-fm caps` prints the limits.
 
+**Committing:** `python3 "$WIKI_ROOT/bin/wiki-commit" -m "<message>" <path>...` (or `--all`). It commits
+through a private index, so parallel sessions never commit or unstage each other's work; set
+`agent_commit_guard: true` in `wiki.config.json` to refuse a bare `git commit` from an agent shell.
+
 **Lint** (`hooks/lint.sh`, deterministic, pre-commit-gated): broken links, orphans, missing `type:`,
 commit-gate tokens, stale dates, title/alias collisions (two pages claiming one name), pages missing
 from their dir's `index.md`, per-type required frontmatter (`type_requirements` in `wiki.config.json`),

@@ -1023,27 +1023,21 @@ assert "a blocked commit leaves the breadcrumb" "yes" \
   "$([ -e "$AUTO_TMP/.auto-commit-failed" ] && echo yes || echo no)"
 rm -rf "$AUTO_TMP"
 
-echo "--- pre-commit stages what its lint writes, so a commit leaves a clean tree ---"
-# The lint is stubbed to the one behaviour under test: it appends to the history file the
-# way lint.sh does, and passes. An unstaged write there leaves the tree dirty the moment
-# the commit ends, which is what turns one edit into a commit per turn forever.
+echo "--- a commit leaves a clean tree: the lint history is machine-local ---"
 PC_TMP="$(mktemp -d)"
 git -C "$PC_TMP" init -q
 git -C "$PC_TMP" config user.name test
 git -C "$PC_TMP" config user.email test@example.invalid
 mkdir -p "$PC_TMP/hooks"
 cp "$H/pre-commit" "$PC_TMP/hooks/pre-commit"
-cat > "$PC_TMP/hooks/lint.sh" <<'STUB'
-#!/usr/bin/env bash
-mkdir -p "$1/.compendium"
-printf 'ran\n' >> "$1/.compendium/lint-history.tsv"
-exit 0
-STUB
+cp "$H/lint.sh" "$H"/*.py "$PC_TMP/hooks/"
 chmod +x "$PC_TMP/hooks/pre-commit" "$PC_TMP/hooks/lint.sh"
 printf 'page\n' > "$PC_TMP/page.md"
 git -C "$PC_TMP" add -A
 git -C "$PC_TMP" -c core.hooksPath=hooks commit -qm first >/dev/null 2>&1
-assert "the commit carries the lint line its own run wrote" "yes" \
+assert "the lint history lives in the git dir" "1" \
+  "$(wc -l < "$PC_TMP/.git/compendium/lint-history.tsv" | tr -d ' ')"
+assert "so no commit carries it" "no" \
   "$(git -C "$PC_TMP" ls-tree -r --name-only HEAD | grep -q 'lint-history' && echo yes || echo no)"
 assert "and the tree is clean afterwards" "" "$(git -C "$PC_TMP" status --porcelain)"
 rm -rf "$PC_TMP"
@@ -1501,11 +1495,12 @@ EOF
 git -C "$RN" init -q
 git -C "$RN" -c user.name=t -c user.email=t@t add -A
 git -C "$RN" -c user.name=t -c user.email=t@t commit -qm base >/dev/null
+RNH="$RN/.git/compendium/lint-history.tsv"
 bash "$H/lint.sh" "$RN" >/dev/null 2>&1
 assert "lint-history.tsv is created on first run" "1" \
-  "$([ -f "$RN/.compendium/lint-history.tsv" ] && echo 1 || echo 0)"
+  "$([ -f "$RNH" ] && echo 1 || echo 0)"
 assert "lint-history.tsv has one line after one run" "1" \
-  "$(wc -l < "$RN/.compendium/lint-history.tsv" | tr -d ' ')"
+  "$(wc -l < "$RNH" | tr -d ' ')"
 mkdir -p "$RN/notes"
 cat > "$RN/notes/orphan.md" <<'EOF'
 ---
@@ -1517,16 +1512,16 @@ EOF
 git -C "$RN" add -A
 bash "$H/lint.sh" "$RN" >/dev/null 2>&1
 assert "lint-history.tsv gets a second line on a second run" "2" \
-  "$(wc -l < "$RN/.compendium/lint-history.tsv" | tr -d ' ')"
+  "$(wc -l < "$RNH" | tr -d ' ')"
 
 echo "--- lint.sh: lint-history.tsv keeps only the newest 200 lines ---"
-: > "$RN/.compendium/lint-history.tsv"
-for i in $(seq 205); do printf '2020-01-01T00:00:00Z\tfiller %d\n' "$i" >> "$RN/.compendium/lint-history.tsv"; done
+: > "$RNH"
+for i in $(seq 205); do printf '2020-01-01T00:00:00Z\tfiller %d\n' "$i" >> "$RNH"; done
 bash "$H/lint.sh" "$RN" >/dev/null 2>&1
 assert "history is capped at 200 lines" "200" \
-  "$(wc -l < "$RN/.compendium/lint-history.tsv" | tr -d ' ')"
+  "$(wc -l < "$RNH" | tr -d ' ')"
 assert "the oldest filler lines are dropped, not the newest" "0" \
-  "$(grep -c 'filler 1$' "$RN/.compendium/lint-history.tsv")"
+  "$(grep -c 'filler 1$' "$RNH")"
 
 echo "--- session-status.sh: reflect maintenance nudge (disabled by default) ---"
 rm -f "$RN/wiki.config.json"
@@ -1553,12 +1548,12 @@ assert_contains "nudge names how long ago reflect last ran" "maintenance: reflec
 rm -f "$RN/analyses/reflection-"*.md
 
 echo "--- session-status.sh: lint-history delta line ---"
-: > "$RN/.compendium/lint-history.tsv"
-printf '2026-01-01T00:00:00Z\tbroken-links:0  orphans:0  islands:1\n' >> "$RN/.compendium/lint-history.tsv"
+: > "$RNH"
+printf '2026-01-01T00:00:00Z\tbroken-links:0  orphans:0  islands:1\n' >> "$RNH"
 out=$(WIKI_ROOT="$RN" bash "$H/session-status.sh" 2>&1)
 assert "no delta line with only one history entry" "0" \
   "$(printf '%s' "$out" | grep -c 'advisories since last lint')"
-printf '2026-01-02T00:00:00Z\tbroken-links:0  orphans:1  islands:2\n' >> "$RN/.compendium/lint-history.tsv"
+printf '2026-01-02T00:00:00Z\tbroken-links:0  orphans:1  islands:2\n' >> "$RNH"
 out=$(WIKI_ROOT="$RN" bash "$H/session-status.sh" 2>&1)
 assert_contains "delta line lists changed counters" \
   "advisories since last lint: orphans 0->1, islands 1->2" "$out"
@@ -1566,7 +1561,7 @@ assert "delta line omits unchanged counters" "0" \
   "$(printf '%s' "$out" | grep -o 'advisories since last lint:[^|]*' | grep -c 'broken-links')"
 
 echo "--- session-status.sh: a counter flipping to ? is reported as a checker failure ---"
-printf '2026-01-03T00:00:00Z\tbroken-links:0  orphans:?  islands:2\n' >> "$RN/.compendium/lint-history.tsv"
+printf '2026-01-03T00:00:00Z\tbroken-links:0  orphans:?  islands:2\n' >> "$RNH"
 out=$(WIKI_ROOT="$RN" bash "$H/session-status.sh" 2>&1)
 assert_contains "numeric-to-? transition is reported, not dropped" \
   "orphans 1->? (checker failed)" "$out"
@@ -2112,6 +2107,51 @@ out=$(WIKI_LINT_GATE_ONLY=1 bash "$H/lint.sh" "$GW" 2>&1); rc=$?
 assert "a budgeted advisory checker still gates in gate-only" "1" "$rc"
 assert_contains "and reports its budget" "BUDGET missed_links=1 limit=0" "$out"
 rm -rf "$(dirname "$GW")"
+
+echo "--- wiki-commit: a private index, so sessions never commit each other's staging ---"
+CW="$(mktemp -d)/wiki"
+mkdir -p "$CW/hooks"
+cp "$H"/* "$CW/hooks/" 2>/dev/null
+chmod +x "$CW"/hooks/*.sh "$CW"/hooks/*.py "$CW/hooks/pre-commit" 2>/dev/null
+printf '{"agent_commit_guard": true, "agent_env_vars": ["WIKI_TEST_AGENT"]}\n' > "$CW/wiki.config.json"
+printf -- '---\ntype: entity\ntitle: Mine\n---\nx\n' > "$CW/mine.md"
+printf -- '---\ntype: entity\ntitle: Theirs\n---\nx\n' > "$CW/theirs.md"
+git -C "$CW" init -q
+git -C "$CW" config user.name t; git -C "$CW" config user.email t@t
+git -C "$CW" config core.hooksPath hooks
+git -C "$CW" add -A && git -C "$CW" commit -qm init >/dev/null 2>&1
+WC="python3 $ROOT/bin/wiki-commit --root $CW"
+printf 'mine edited\n' >> "$CW/mine.md"
+printf 'theirs edited\n' >> "$CW/theirs.md"
+git -C "$CW" add theirs.md
+out=$($WC -m "mine only" mine.md 2>&1); rc=$?
+assert "wiki-commit succeeds" "0" "$rc"
+assert "it commits only the named path" "mine.md" "$(git -C "$CW" show --name-only --format= HEAD | grep -v STATE.md)"
+assert "another session's staging is untouched" "M  theirs.md" "$(git -C "$CW" status --short theirs.md)"
+assert "the committed path is not left staged in reverse" "" "$(git -C "$CW" status --short mine.md)"
+out=$($WC -m "again" mine.md 2>&1); rc=$?
+assert "a clean path is a no-op, not a failure" "0:nothing to commit" "$rc:$out"
+out=$(WIKI_TEST_AGENT=1 git -C "$CW" commit -qm "bare" 2>&1); rc=$?
+assert "the guard refuses a bare commit from an agent shell" "1" "$rc"
+assert_contains "and names the tool" "wiki-commit -m" "$out"
+out=$(git -C "$CW" commit -qm "human" 2>&1); rc=$?
+assert "a commit outside an agent shell is allowed" "0" "$rc"
+printf 'more\n' >> "$CW/mine.md"
+out=$(WIKI_TEST_AGENT=1 $WC -m "agent via tool" --all 2>&1); rc=$?
+assert "wiki-commit passes the guard from an agent shell" "0" "$rc"
+rm -rf "$(dirname "$CW")"
+
+echo "--- board.py: an unchanged board is not rewritten for its timestamp alone ---"
+BW="$(mktemp -d)"
+printf -- '---\ntype: state\ntitle: S\n---\n<!-- board:begin (generated by hooks/board.py from initiative frontmatter; do not edit) -->\nx\n<!-- board:end -->\n' > "$BW/STATE.md"
+python3 "$H/board.py" "$BW" --write >/dev/null 2>&1
+first=$(cat "$BW/STATE.md")
+sed -i.bak -E 's/generated [0-9-]+ [0-9:]+/generated 2000-01-01 00:00/' "$BW/STATE.md" && rm -f "$BW/STATE.md.bak"
+stale=$(cat "$BW/STATE.md")
+python3 "$H/board.py" "$BW" --write >/dev/null 2>&1
+assert "a stamp-only difference leaves the file alone" "$stale" "$(cat "$BW/STATE.md")"
+assert "the first write did render the board" "yes" "$(printf '%s' "$first" | grep -q '## Board' && echo yes || echo no)"
+rm -rf "$BW"
 
 echo
 echo "======================================"

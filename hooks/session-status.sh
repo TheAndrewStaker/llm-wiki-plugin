@@ -98,8 +98,11 @@ fi
 
 # 1c. Lint-history delta: a one-line summary of which advisory counters changed between the
 # last two lint runs (disabled implicitly when fewer than 2 history lines exist).
-if [ -f "$KB/.compendium/lint-history.tsv" ]; then
-  delta=$(python3 - "$KB/.compendium/lint-history.tsv" <<'PY'
+hist=$(git -C "$KB" rev-parse --absolute-git-dir 2>/dev/null || true)
+hist="${hist:+$hist/compendium/lint-history.tsv}"
+[ -n "$hist" ] && [ -f "$hist" ] || hist="$KB/.compendium/lint-history.tsv"
+if [ -f "$hist" ]; then
+  delta=$(python3 - "$hist" <<'PY'
 import re, sys
 
 path = sys.argv[1]

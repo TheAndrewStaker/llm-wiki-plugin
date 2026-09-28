@@ -30,5 +30,6 @@ the wiki root from `$CLAUDE_PLUGIN_OPTION_WIKI_ROOT` / `$WIKI_ROOT` / `~/wiki`.
    - a meaningful edit to an existing page bumps its `timestamp:` to today (cosmetic link/typo edits bump
      nothing; `reviewed:` = re-verification without change).
 3. Run `bash "$WIKI_ROOT/hooks/lint.sh"`; fix any broken links or unresolved tokens.
-4. Commit the wiki changes.
+4. Commit the wiki changes with `wiki-commit -m "<message>" <path>...` naming the files this session
+   wrote (never `git add` + `git commit`: the index is shared with parallel sessions).
 5. Report a 2-line summary of what was filed. It is now safe to end the session.

@@ -211,6 +211,9 @@ def write_state(kb, board):
         print(f"board.py: no {BEGIN} .. {END} markers in STATE.md; nothing written", file=sys.stderr)
         return False
     new_text = pattern.sub(lambda _: board.replace("\\", "\\\\"), text, count=1)
+    stamp = re.compile(r"\(generated \d{4}-\d\d-\d\d \d\d:\d\d")
+    if stamp.sub("", new_text) == stamp.sub("", text):
+        return False
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(new_text)
     return True

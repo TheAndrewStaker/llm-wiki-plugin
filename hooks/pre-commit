@@ -10,6 +10,27 @@ set -uo pipefail
 H="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KB="$(git rev-parse --show-toplevel)"
 
+# Agent shells commit through wiki-commit, which uses a private index; a bare `git commit` in
+# one takes whatever any session has staged. Opt-in via agent_commit_guard; the variables
+# naming an agent shell come from agent_env_vars (default CLAUDECODE).
+if [ "${WIKI_COMMIT:-}" != "1" ] && command -v python3 >/dev/null 2>&1; then
+  guard=$(python3 - "$H" "$KB" <<'PY' 2>/dev/null || true
+import os, sys
+sys.path.insert(0, sys.argv[1])
+import wikilib
+cfg = wikilib.load_config(sys.argv[2])
+if cfg.get("agent_commit_guard"):
+    names = cfg.get("agent_env_vars") or ["CLAUDECODE"]
+    print("block" if any(os.environ.get(n) for n in names) else "")
+PY
+)
+  if [ "$guard" = "block" ]; then
+    echo "wiki: commit from an agent shell refused; the shared index may hold another session's staging." >&2
+    echo "Use: wiki-commit -m \"<message>\" <path>...   (or --all for everything dirty)" >&2
+    exit 1
+  fi
+fi
+
 # Regenerate before linting, so the lint (and the commit) sees a fresh board, not a stale
 # one; --write is a no-op if STATE.md carries no board markers (e.g. a wiki that hasn't
 # adopted the board yet).
@@ -20,13 +41,4 @@ fi
 
 # WIKI_CHECK_INDEX: the initiative gate judges the staged version, so a page an
 # auto-commit holds back does not block the files it does commit.
-# Run rather than exec: lint.sh appends a line to .compendium/lint-history.tsv, and leaving
-# that write unstaged leaves the tree dirty the moment this commit finishes. An auto-commit
-# then commits it, its own lint appends another line, and the wiki gains one commit per turn
-# forever, carrying nothing but the previous run's line. Staging the line into the commit
-# that produced it ends that. A wiki that does not track the file is unaffected: the add
-# fails and is ignored.
 WIKI_CHECK_INDEX=1 "$H/lint.sh" "$KB"
-rc=$?
-git -C "$KB" add .compendium/lint-history.tsv 2>/dev/null || true
-exit "$rc"
