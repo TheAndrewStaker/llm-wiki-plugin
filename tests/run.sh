@@ -2089,6 +2089,30 @@ assert "the tree is clean" "" "$(git -C "$FW" status --short)"
 assert "the breadcrumb clears" "no" "$([ -e "$FW/.auto-commit-failed" ] && echo yes || echo no)"
 rm -rf "$(dirname "$FW")"
 
+echo "--- lint gate-only mode: the commit verdict without the advisory sweep ---"
+GW="$(mktemp -d)/wiki"
+mkdir -p "$GW/entities"
+printf -- '---\ntype: entity\ntitle: A\n---\nsee [b](b.md)\n' > "$GW/entities/a.md"
+printf -- '---\ntype: entity\ntitle: B\n---\nsee [a](a.md)\n' > "$GW/entities/b.md"
+git -C "$GW" init -q && git -C "$GW" add -A
+out=$(WIKI_LINT_GATE_ONLY=1 bash "$H/lint.sh" "$GW" 2>&1); rc=$?
+assert "a clean wiki passes gate-only" "0" "$rc"
+assert "and prints only the verdict" "1" "$(printf '%s\n' "$out" | grep -c .)"
+assert "gate-only writes no history line" "no" "$([ -e "$GW/.compendium/lint-history.tsv" ] && echo yes || echo no)"
+printf -- '---\ntype: entity\ntitle: A\n---\nsee [gone](gone.md)\n' > "$GW/entities/a.md"
+out=$(WIKI_LINT_GATE_ONLY=1 bash "$H/lint.sh" "$GW" 2>&1); rc=$?
+assert "a broken link still fails gate-only" "1" "$rc"
+assert_contains "and names the link" "BROKEN" "$out"
+printf '{"advisory_budgets": {"missed_links": 0}}\n' > "$GW/wiki.config.json"
+printf -- '---\ntype: entity\ntitle: Alpha Widget\n---\nsee [b](b.md)\n' > "$GW/entities/a.md"
+printf -- '---\ntype: entity\ntitle: B\n---\nThe Alpha Widget, unlinked. [c](c.md)\n' > "$GW/entities/b.md"
+printf -- '---\ntype: entity\ntitle: C\n---\n[a](a.md)\n' > "$GW/entities/c.md"
+git -C "$GW" add -A
+out=$(WIKI_LINT_GATE_ONLY=1 bash "$H/lint.sh" "$GW" 2>&1); rc=$?
+assert "a budgeted advisory checker still gates in gate-only" "1" "$rc"
+assert_contains "and reports its budget" "BUDGET missed_links=1 limit=0" "$out"
+rm -rf "$(dirname "$GW")"
+
 echo
 echo "======================================"
 echo "  PASS=$pass  FAIL=$fail"

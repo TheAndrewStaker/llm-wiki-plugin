@@ -25,6 +25,9 @@ This project follows Keep a Changelog and intends to use Semantic Versioning aft
   transcript wrote a failing page gets exit 2 once with the failing lines; any other session
   commits everything else, holds the failing pages back, and stays quiet. The pre-commit gate
   judges the staged version of each page (`WIKI_CHECK_INDEX=1`) so a held page does not block.
+- Auto-commits lint in gate-only mode (`WIKI_LINT_GATE_ONLY=1`): only the checks that can fail
+  the commit run, plus any advisory checker a configured budget gates. It prints only failing
+  lines and writes no history line. Deliberate commits still run the full lint.
 - The edit-time cap hook also runs after Bash calls, checking every `initiatives/` page the
   command visibly writes (`wikilib.bash_writes`, shared with the Stop hook's attribution).
 - The personal ask queue is configurable: `initiative_schema.owner` names the `waiting_on`

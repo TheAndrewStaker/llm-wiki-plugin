@@ -102,7 +102,7 @@ else
   # hook exiting non-zero is reported to the author as a broken session.
   if git diff --cached --quiet; then
     rm -f "$KB/.auto-commit-failed"
-  elif out=$(git commit -q -m "session auto-save: wiki findings ($(date +%Y-%m-%d))" 2>&1); then
+  elif out=$(WIKI_LINT_GATE_ONLY=1 git commit -q -m "session auto-save: wiki findings ($(date +%Y-%m-%d))" 2>&1); then
     rm -f "$KB/.auto-commit-failed"
   else
     case "$out" in

@@ -36,20 +36,46 @@ if [ -n "$missing_checkers" ]; then
   exit 2
 fi
 
+# WIKI_LINT_GATE_ONLY=1 runs only what can fail the commit: the hard checks, plus an advisory
+# checker whose counter advisory_budgets gates. It prints failures only and writes no history.
+gate_only=${WIKI_LINT_GATE_ONLY:-0}
+budgeted=$(python3 - "$KB" <<'PY' 2>/dev/null || true
+import json, os, sys
+try:
+    cfg = json.load(open(os.path.join(sys.argv[1], "wiki.config.json"), encoding="utf-8"))
+except (FileNotFoundError, ValueError, OSError):
+    cfg = {}
+b = cfg.get("advisory_budgets", {})
+print(" ".join(k for k, v in b.items() if isinstance(v, int) and v >= 0))
+PY
+)
+needed() { # needed <budget-name>: run an advisory checker in gate-only mode only if budgeted
+  [ "$gate_only" != "1" ] || case " $budgeted " in *" $1 "*) return 0 ;; *) return 1 ;; esac
+}
+
 core_err=$(mktemp)
 core=$(python3 "$H/lint-core.py" "$KB" 2>"$core_err")
 core_rc=$?
-graph=$(python3 "$H/graph-check.py" "$KB" 2>/dev/null || true)
-missed=$(python3 "$H/missed-links.py" "$KB" 2>/dev/null || true)
-wanted=$(python3 "$H/wanted-pages.py" "$KB" 2>/dev/null || true)
-inbox=$(python3 "$H/inbox-check.py" "$KB" 2>/dev/null || true)
-drift=$(python3 "$H/timestamp-drift.py" "$KB" 2>/dev/null || true)
-rubber=$(python3 "$H/rubber-stamp.py" "$KB" 2>/dev/null || true)
+graph=""; missed=""; wanted=""; inbox=""; drift=""; rubber=""; neigh=""; vendor=""
+needed islands && graph=$(python3 "$H/graph-check.py" "$KB" 2>/dev/null || true)
+needed missed_links && missed=$(python3 "$H/missed-links.py" "$KB" 2>/dev/null || true)
+needed rubber_stamp && rubber=$(python3 "$H/rubber-stamp.py" "$KB" 2>/dev/null || true)
+if [ "$gate_only" != "1" ]; then
+  wanted=$(python3 "$H/wanted-pages.py" "$KB" 2>/dev/null || true)
+  inbox=$(python3 "$H/inbox-check.py" "$KB" 2>/dev/null || true)
+  drift=$(python3 "$H/timestamp-drift.py" "$KB" 2>/dev/null || true)
+  neigh=$(python3 "$H/neighbor-scope.py" "$KB" 2>/dev/null || true)
+  vendor=$(python3 "$H/vendor-check.py" "$KB" 2>/dev/null || true)
+fi
 port=$(python3 "$H/frontmatter-portability.py" "$KB" 2>/dev/null || true)
-neigh=$(python3 "$H/neighbor-scope.py" "$KB" 2>/dev/null || true)
-vendor=$(python3 "$H/vendor-check.py" "$KB" 2>/dev/null || true)
 init=$(python3 "$H/initiative-check.py" "$KB" 2>/dev/null || true)
 
+if [ "$gate_only" = "1" ]; then
+  # Only the lines that can fail the commit, so a blocked commit names its cause.
+  printf '%s\n' "$core" "$port" "$init" \
+    | grep -E '^  (BROKEN|UNRESOLVED|BADYAML|INIT-FAIL|PORT-DUPKEY|PORT-TAB) ' || true
+  exec 3>&1 1>/dev/null
+fi
 echo "${C}== knowledge-base lint ==${Z}"
 if [ "$core_rc" -ne 0 ]; then
   echo "${R}FAIL${Z} (lint-core crashed; failing closed rather than passing blind):" >&2
@@ -101,8 +127,10 @@ ic=$(printf '%s\n' "$init"   | sed -n 's/^INIT-FAIL=\([0-9]*\).*/\1/p')
 summary_line="broken-links:${b:-?}  external:${ex:-?}/${em:-?}  ignored-targets:${ig:-?}  unresolved:${u:-?}  bad-yaml:${by:-?}  orphans:${orp:-?}  islands:${islands:-?}  missed-links:${ml:-?}  no-type:${nt:-?}  stale:${st:-?}  collisions:${col:-?}  unindexed:${unx:-?}  missing-fields:${mf:-?}  dead-ends:${de:-?}  stale-pointers:${sp:-?}  chains:${ch:-?}  wanted:${wp:-?}  inbox:${ib:-?}  drift:${dr:-?}  rubber-stamp:${rs:-?}  dup-keys:${dk:-?}  fm-tabs:${tb:-?}  ambig-yaml:${pa:-?}  desc-quality:${pd:-?}  neighbors:${ng:-?}  vendor:${vn:-?}  init-fail:${ic:-?}"
 echo "${C}== summary ==${Z}  ${summary_line}"
 
+# Gate-only restores stdout here, so only the verdict lines below print.
+[ "$gate_only" = "1" ] && exec 1>&3 3>&-
 # Maintenance history: one line per run, newest 200 kept. Best-effort; must never fail the lint.
-{
+[ "$gate_only" = "1" ] || {
   hist_dir="$KB/.compendium"
   mkdir -p "$hist_dir" 2>/dev/null
   hist_file="$hist_dir/lint-history.tsv"
