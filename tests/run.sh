@@ -1959,6 +1959,108 @@ rm -rf "$(dirname "$EW")"
 
 rm -rf "$(dirname "$IW")"
 
+# ==== wiki-fm, index-mode gate, and Stop-hook attribution ====
+FW="$(mktemp -d)/wiki"
+mkdir -p "$FW"/{initiatives,hooks}
+cp "$H"/* "$FW/hooks/" 2>/dev/null
+chmod +x "$FW"/hooks/*.sh "$FW"/hooks/*.py "$FW/hooks/pre-commit" 2>/dev/null
+cat > "$FW/wiki.config.json" <<'EOF'
+{"auto_commit": true, "auto_push": false,
+ "initiative_schema": {"assignment_kind": ["self"], "assignment_status": ["active"],
+   "waiting_on": ["none", "design"], "summary_max_words": 5, "next_max_words": 5,
+   "ask_max_words": 5}}
+EOF
+for n in alpha beta; do cat > "$FW/initiatives/$n.md" <<EOF
+---
+type: initiative
+title: $n
+timestamp: 2026-01-01
+assignment_kind: self
+assignment_status: active
+next: ship it
+waiting_on: none
+---
+body
+EOF
+done
+printf '/.auto-commit-failed\n' > "$FW/.gitignore"
+git -C "$FW" init -q
+git -C "$FW" config user.name t; git -C "$FW" config user.email t@t
+git -C "$FW" config core.hooksPath hooks
+git -C "$FW" add -A && git -C "$FW" commit -qm init >/dev/null 2>&1
+FM="python3 $ROOT/bin/wiki-fm"
+
+echo "--- wiki-fm: refuses an over-cap field and writes nothing ---"
+before=$(cat "$FW/initiatives/alpha.md")
+out=$($FM set "$FW/initiatives/alpha.md" "next=one two three four five six" 2>&1); rc=$?
+assert "over-cap set exits 1" "1" "$rc"
+assert_contains "the refusal names the count" "next: 6w > 5w cap" "$out"
+assert "the page is untouched" "$before" "$(cat "$FW/initiatives/alpha.md")"
+
+echo "--- wiki-fm: a cross-field rule is checked on the edit as a whole ---"
+out=$($FM set "$FW/initiatives/alpha.md" waiting_on=design 2>&1); rc=$?
+assert "waiting_on without an ask is refused" "1" "$rc"
+assert_contains "and says why" "ask: required" "$out"
+out=$($FM set "$FW/initiatives/alpha.md" waiting_on=design 'ask=is "this" right?' 2>&1); rc=$?
+assert "waiting_on with an ask in the same call is accepted" "0" "$rc"
+assert_contains "a value with quotes is escaped" 'ask: "is \"this\" right?"' "$(cat "$FW/initiatives/alpha.md")"
+assert "timestamp is bumped to today" "timestamp: $(date +%Y-%m-%d)" "$(grep '^timestamp:' "$FW/initiatives/alpha.md")"
+assert "a pre-existing field keeps its place" "5" "$(grep -n '^assignment_kind:' "$FW/initiatives/alpha.md" | cut -d: -f1)"
+out=$($FM get "$FW/initiatives/alpha.md" ask 2>&1)
+assert_contains "get reads it back with a word count" '(3w)' "$out"
+$FM set "$FW/initiatives/alpha.md" waiting_on=none ask= >/dev/null 2>&1
+assert "an empty value removes the field" "0" "$(grep -c '^ask:' "$FW/initiatives/alpha.md")"
+git -C "$FW" add -A && git -C "$FW" commit -qm fm >/dev/null 2>&1
+
+echo "--- initiative-check: index mode judges the staged version ---"
+printf -- '---\ntype: initiative\ntitle: beta\ntimestamp: 2026-01-01\nassignment_kind: self\nassignment_status: active\nnext: one two three four five six\nwaiting_on: none\n---\nbody\n' > "$FW/initiatives/beta.md"
+assert "the tree fails" "INIT-FAIL=1" "$(python3 "$H/initiative-check.py" "$FW" | tail -1)"
+assert "the unstaged index passes" "INIT-FAIL=0" "$(WIKI_CHECK_INDEX=1 python3 "$H/initiative-check.py" "$FW" | tail -1)"
+
+echo "--- session-touched: a write counts, a read does not ---"
+TR="$(dirname "$FW")/writer.jsonl"; RD="$(dirname "$FW")/reader.jsonl"
+python3 - "$TR" "$RD" "$FW" <<'PYEOF'
+import json, sys
+tr, rd, fw = sys.argv[1:4]
+def use(name, inp):
+    return json.dumps({"type": "assistant", "message": {"content": [
+        {"type": "tool_use", "name": name, "input": inp}]}}) + "\n"
+open(tr, "w").write(use("Bash", {"command": "python3 - <<'E'\nopen('initiatives/beta.md','w').write(x)\nE"}))
+open(rd, "w").write(use("Bash", {"command": "cat initiatives/beta.md 2>/dev/null"}) +
+                    use("Write", {"file_path": fw + "/initiatives/alpha.md"}))
+PYEOF
+assert "a Bash write is attributed" "initiatives/beta.md" "$(python3 "$H/session-touched.py" "$TR" "$FW" initiatives/beta.md)"
+assert "a read with a stderr redirect is not" "" "$(python3 "$H/session-touched.py" "$RD" "$FW" initiatives/beta.md)"
+assert "a Write tool call is attributed" "initiatives/alpha.md" "$(python3 "$H/session-touched.py" "$RD" "$FW" initiatives/alpha.md)"
+
+echo "--- auto-commit: the writer is blocked once, a bystander commits around it ---"
+printf 'other session finding\n' > "$FW/initiatives/note.txt"
+head0=$(git -C "$FW" rev-parse HEAD)
+out=$(printf '{"hook_event_name":"Stop","stop_hook_active":false,"transcript_path":"%s"}' "$TR" \
+  | WIKI_ROOT="$FW" bash "$H/auto-commit.sh" 2>&1); rc=$?
+assert "the writing session gets exit 2" "2" "$rc"
+assert_contains "with the failing line" "INIT-FAIL initiatives/beta.md next" "$out"
+assert_contains "and the tool to fix it" "wiki-fm set" "$out"
+assert "nothing is committed on a block" "$head0" "$(git -C "$FW" rev-parse HEAD)"
+assert "nothing is left staged" "" "$(git -C "$FW" diff --cached --name-only)"
+out=$(printf '{"hook_event_name":"Stop","stop_hook_active":false,"transcript_path":"%s"}' "$RD" \
+  | WIKI_ROOT="$FW" bash "$H/auto-commit.sh" 2>&1); rc=$?
+assert "a bystander exits 0" "0" "$rc"
+assert "and prints nothing" "" "$out"
+assert "the bystander commits the other file" "initiatives/note.txt" "$(git -C "$FW" show --name-only --format= HEAD | grep note.txt)"
+assert "and holds the failing page back" " M initiatives/beta.md" "$(git -C "$FW" status --short initiatives/beta.md)"
+assert_contains "the breadcrumb names the held page" "initiatives/beta.md" "$(cat "$FW/.auto-commit-failed")"
+out=$(printf '{"hook_event_name":"Stop","stop_hook_active":true,"transcript_path":"%s"}' "$TR" \
+  | WIKI_ROOT="$FW" bash "$H/auto-commit.sh" 2>&1); rc=$?
+assert "the writer's second stop does not loop" "1" "$rc"
+assert_contains "it reports the held page once" "held back" "$out"
+$FM set "$FW/initiatives/beta.md" "next=ship it" >/dev/null 2>&1
+printf '{"hook_event_name":"Stop"}' | WIKI_ROOT="$FW" bash "$H/auto-commit.sh" >/dev/null 2>&1; rc=$?
+assert "once fixed the page commits" "0" "$rc"
+assert "the tree is clean" "" "$(git -C "$FW" status --short)"
+assert "the breadcrumb clears" "no" "$([ -e "$FW/.auto-commit-failed" ] && echo yes || echo no)"
+rm -rf "$(dirname "$FW")"
+
 echo
 echo "======================================"
 echo "  PASS=$pass  FAIL=$fail"

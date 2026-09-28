@@ -6,11 +6,20 @@
 # Runs the pre-commit lint gate; if lint fails the commit is skipped and the changes stay in the
 # working tree for the next turn to fix. A failure is NOT silent: it writes .auto-commit-failed
 # (surfaced by session-status.sh at every session start until it clears). No-op when clean.
+#
+# Initiative-gate failures are attributed first. The session whose transcript wrote a failing
+# page gets exit 2 once, with the failing lines, so it fixes them in the same turn. Any other
+# session commits everything except the failing pages and exits 0.
 set -uo pipefail
 
 input=$(cat 2>/dev/null || true)
-# avoid Stop-hook continuation loops
-case "$input" in *'"stop_hook_active":true'*|*'"stop_hook_active": true'*) exit 0 ;; esac
+stop_active=false
+case "$input" in *'"stop_hook_active":true'*|*'"stop_hook_active": true'*) stop_active=true ;; esac
+event=Stop
+case "$input" in *'"hook_event_name":"SessionEnd"'*|*'"hook_event_name": "SessionEnd"'*) event=SessionEnd ;; esac
+transcript=$(printf '%s' "$input" | python3 -c 'import json,sys
+try: print(json.load(sys.stdin).get("transcript_path") or "")
+except Exception: print("")' 2>/dev/null || true)
 
 KB="${CLAUDE_PLUGIN_OPTION_WIKI_ROOT:-${WIKI_ROOT:-$HOME/wiki}}"
 KB="${KB/#\~/$HOME}"
@@ -35,6 +44,7 @@ PY
 fi
 [ "$auto_commit" = "true" ] || exit 0
 
+held=""; mine=""; fails=""
 # Stop and SessionEnd can fire together. Serialize the whole add/commit/push transaction.
 lock="$(git rev-parse --git-dir)/wiki-auto-commit.lock"
 if ! mkdir "$lock" 2>/dev/null; then
@@ -60,6 +70,32 @@ if git diff --quiet && git diff --cached --quiet && [ -z "$(git ls-files --other
   rm -f "$KB/.auto-commit-failed"
 else
   git add -A
+
+  if [ -f "$H/initiative-check.py" ]; then
+    fails=$(WIKI_CHECK_INDEX=1 python3 "$H/initiative-check.py" "$KB" 2>/dev/null | grep '^  INIT-FAIL ' || true)
+    if [ -n "$fails" ]; then
+      files=$(printf '%s\n' "$fails" | awk '{print $2}' | sort -u)
+      mine=""
+      if [ -n "$transcript" ] && [ -f "$transcript" ]; then
+        # shellcheck disable=SC2086
+        mine=$(python3 "$H/session-touched.py" "$transcript" "$KB" $files 2>/dev/null || true)
+      fi
+      if [ -n "$mine" ] && [ "$event" = "Stop" ] && [ "$stop_active" = "false" ]; then
+        git reset -q
+        {
+          echo "wiki: pages this session wrote fail the commit gate, so nothing was committed:"
+          printf '%s\n' "$fails" | grep -F -f <(printf '%s\n' "$mine")
+          echo "Fix them now, preferably with: wiki-fm set <page> <field>=<value>"
+          echo "(wiki-fm validates before writing; depth belongs in the page body as a dated log entry)."
+        } >&2
+        exit 2
+      fi
+      # shellcheck disable=SC2086
+      git reset -q -- $files 2>/dev/null || true
+      held=$files
+    fi
+  fi
+
   # The check above can see a dirty tree that stages to nothing: another committer took the
   # same changes in between, or the difference was stat-only. `git commit` calls that a
   # failure and exits 1, which is a false alarm this hook must not raise, because a Stop
@@ -85,6 +121,18 @@ else
   fi
 fi
 
+if [ -n "$held" ]; then
+  {
+    echo "auto-commit held back $(date '+%Y-%m-%d %H:%M') -- these pages fail the initiative gate and stay uncommitted:"
+    printf '%s\n' "$fails"
+    echo "Fix with: wiki-fm set <page> <field>=<value>"
+  } > "$KB/.auto-commit-failed"
+  if [ -n "$mine" ] && [ "$event" = "Stop" ]; then
+    echo "wiki: still failing after one fix attempt, held back: $(printf '%s ' $held)" >&2
+    hook_rc=1
+  fi
+fi
+
 # Push if origin + an upstream are configured. Never blocks the turn; failure is a breadcrumb only.
 if [ "$auto_push" = "true" ] && git remote get-url origin >/dev/null 2>&1 \
    && git rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
@@ -99,4 +147,4 @@ if [ "$auto_push" = "true" ] && git remote get-url origin >/dev/null 2>&1 \
   fi
   rm -f "$perr"
 fi
-exit 0
+exit "${hook_rc:-0}"

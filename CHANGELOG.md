@@ -14,7 +14,19 @@ This project follows Keep a Changelog and intends to use Semantic Versioning aft
   exported HTML note captured alongside a transcript, keeping each image marker where it sat in the
   text and writing a readable downscaled copy (`skills/meeting-notes/scripts/extract-companion.py`).
 
+- `bin/wiki-fm`: get and set frontmatter fields. `set` validates the whole edit against
+  `initiative_schema` (the commit gate's own rules, now shared as `wikilib.initiative_issues`),
+  refuses it with the word count or allowed values, re-reads before an atomic write, bumps
+  `timestamp`, and regenerates the board.
+
 ### Changed
+
+- The Stop hook attributes an initiative-gate failure before committing. The session whose
+  transcript wrote a failing page gets exit 2 once with the failing lines; any other session
+  commits everything else, holds the failing pages back, and stays quiet. The pre-commit gate
+  judges the staged version of each page (`WIKI_CHECK_INDEX=1`) so a held page does not block.
+- `frontmatter_value` reads the whole frontmatter block instead of its first 1200 characters,
+  so a key below a long flow list is no longer read as absent.
 
 - `wanted-pages` honors `wanted_exempt_dirs`. A dated log entry records what happened; it is not
   where the wiki declares a page worth writing, so `[[...]]` there is prose syntax, not a marker.
