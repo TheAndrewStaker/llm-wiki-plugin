@@ -154,6 +154,40 @@ def frontmatter_value(text, key):
     return m.group(1).strip() if m else None
 
 
+def initiative_issues(schema, fm):
+    """Per-page initiative schema violations as (field, message) pairs. `fm` is the bare
+    frontmatter block. Shared by the commit gate and the frontmatter writer so the two
+    cannot disagree about what a page owes."""
+    def wc(s):
+        return len(s.split()) if s else 0
+
+    get = lambda k: frontmatter_value(fm, k)
+    kinds = set(schema.get("assignment_kind", []))
+    statuses = set(schema.get("assignment_status", []))
+    waiting = set(schema.get("waiting_on", []))
+    kind, status, wo, ask = get("assignment_kind"), get("assignment_status"), \
+        get("waiting_on") or "none", get("ask")
+    out = []
+    if kinds and kind not in kinds:
+        out.append(("assignment_kind", f"missing or not in {sorted(kinds)}"))
+    if statuses and status not in statuses:
+        out.append(("assignment_status", f"missing or not in {sorted(statuses)}"))
+    if get("priority") is not None and not get("priority_set"):
+        out.append(("priority_set", "required because priority is set"))
+    if kind == "pitch" and not get("cycle"):
+        out.append(("cycle", "required because assignment_kind is pitch"))
+    if waiting and wo not in waiting:
+        out.append(("waiting_on", f"'{wo}' not in {sorted(waiting)}"))
+    if wo != "none" and not ask:
+        out.append(("ask", f"required because waiting_on is '{wo}', not 'none'"))
+    for field, cap_key in (("summary", "summary_max_words"), ("next", "next_max_words"),
+                           ("ask", "ask_max_words")):
+        cap, val = schema.get(cap_key, 0), get(field)
+        if cap and val and wc(val) > cap:
+            out.append((field, f"{wc(val)}w > {cap}w cap"))
+    return out
+
+
 def fm_list(fm_text, key):
     """Every value under `key` — inline flow ([a, b]), single scalar, or block list.
 

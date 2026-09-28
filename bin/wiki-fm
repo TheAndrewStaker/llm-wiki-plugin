@@ -1,0 +1,180 @@
+#!/usr/bin/env python3
+"""wiki-fm — read and write a page's frontmatter fields, validated before anything is written.
+
+The one path agents should use to change board state. `set` applies every field=value pair to
+the page's frontmatter as one edit, checks the result against the wiki's initiative_schema
+(the same rules the commit gate enforces), and refuses the whole edit if it would introduce a
+violation, printing the word count or the allowed values. On success it bumps `timestamp` to
+today when the page carries one, writes atomically, and regenerates the board.
+
+Usage:
+    wiki-fm get PAGE [FIELD...]
+    wiki-fm set PAGE FIELD=VALUE [FIELD=VALUE...] [--no-board]
+    wiki-fm caps                 print the configured enums and word caps
+
+PAGE is a path, absolute or relative to the wiki root. An empty VALUE (`ask=`) removes the
+field. A VALUE starting with `[` is written as a flow list, verbatim.
+
+Root resolution: --root, else the git toplevel of an existing PAGE path, else
+$CLAUDE_PLUGIN_OPTION_WIKI_ROOT, else $WIKI_ROOT, else ~/wiki.
+"""
+import argparse
+import datetime
+import os
+import re
+import subprocess
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(HERE), "hooks"))
+import wikilib  # noqa: E402
+
+FM = re.compile(r"^---\n(.*?)\n---", re.S)
+BARE = re.compile(r"^[A-Za-z0-9_.:/#@+-]+$")
+
+
+def locate(page, root_arg):
+    if root_arg:
+        kb = os.path.expanduser(root_arg)
+    elif os.path.isfile(page):
+        top = subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                             cwd=os.path.dirname(os.path.abspath(page)),
+                             capture_output=True, text=True).stdout.strip()
+        kb = top or os.path.dirname(os.path.abspath(page))
+    else:
+        kb = wikilib.resolve_root(None)
+    path = page if os.path.isabs(page) else (page if os.path.isfile(page) else os.path.join(kb, page))
+    path = os.path.abspath(path)
+    return kb, path, os.path.relpath(os.path.realpath(path), os.path.realpath(kb))
+
+
+def render(value, schema):
+    if value.startswith("[") or BARE.match(value):
+        return value
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def apply(text, updates, schema, touch):
+    m = FM.match(text)
+    if not m:
+        raise SystemExit("wiki-fm: page has no frontmatter block")
+    lines = m.group(1).split("\n")
+    if touch and "timestamp" not in updates and any(l.startswith("timestamp:") for l in lines):
+        updates = dict(updates, timestamp=datetime.date.today().isoformat())
+    for key, value in updates.items():
+        idx = next((i for i, l in enumerate(lines) if re.match(re.escape(key) + r":", l)), None)
+        if idx is not None and idx + 1 < len(lines) and re.match(r"^\s+-\s", lines[idx + 1]) \
+                and not lines[idx].split(":", 1)[1].strip():
+            raise SystemExit(f"wiki-fm: {key} is a block list; edit it by hand")
+        if value == "":
+            if idx is not None:
+                del lines[idx]
+            continue
+        line = f"{key}: {render(value, schema)}"
+        if idx is None:
+            lines.append(line)
+        else:
+            lines[idx] = line
+    fm = "\n".join(lines)
+    return "---\n" + fm + "\n---" + text[m.end():], fm, m.group(1)
+
+
+def cmd_caps(kb):
+    schema = wikilib.load_config(kb).get("initiative_schema") or {}
+    if not schema:
+        print("no initiative_schema configured")
+        return 0
+    for k, v in schema.items():
+        print(f"{k}: {v}")
+    return 0
+
+
+def cmd_get(path, fields):
+    text = open(path, encoding="utf-8").read()
+    m = FM.match(text)
+    if not m:
+        return 1
+    fm = m.group(1)
+    keys = fields or [l.split(":", 1)[0] for l in fm.split("\n") if re.match(r"^[A-Za-z_]\w*:", l)]
+    for k in keys:
+        v = wikilib.frontmatter_value(fm, k)
+        wc = f"  ({len(v.split())}w)" if v and k in ("summary", "next", "ask") else ""
+        print(f"{k}: {v if v is not None else ''}{wc}")
+    return 0
+
+
+def cmd_set(kb, path, rel, pairs, board):
+    updates = {}
+    for p in pairs:
+        if "=" not in p:
+            raise SystemExit(f"wiki-fm: expected FIELD=VALUE, got {p!r}")
+        k, v = p.split("=", 1)
+        if "\n" in v:
+            raise SystemExit(f"wiki-fm: {k} must be one line")
+        updates[k.strip()] = v.strip()
+    schema = wikilib.load_config(kb).get("initiative_schema") or {}
+
+    for _ in range(3):
+        before = open(path, encoding="utf-8").read()
+        new, fm_new, fm_old = apply(before, updates, schema, touch=True)
+        if schema and wikilib.frontmatter_value(fm_new, "type") == "initiative" \
+                and wikilib.frontmatter_value(fm_new, "board") != "false" \
+                and rel.startswith("initiatives/"):
+            old = set(wikilib.initiative_issues(schema, fm_old))
+            bad = [i for i in wikilib.initiative_issues(schema, fm_new)
+                   if i not in old or i[0] in updates]
+            if bad:
+                print(f"wiki-fm: refused, {rel} would fail the commit gate; nothing written.",
+                      file=sys.stderr)
+                for field, msg in bad:
+                    print(f"  {field}: {msg}", file=sys.stderr)
+                print("Shorten or correct and rerun. Depth belongs in the page body as a dated"
+                      " log entry.", file=sys.stderr)
+                return 1
+        # Re-read immediately before writing: another session may have edited the page since.
+        if open(path, encoding="utf-8").read() != before:
+            continue
+        tmp = f"{path}.wiki-fm.{os.getpid()}"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            fh.write(new)
+        os.replace(tmp, path)
+        break
+    else:
+        print(f"wiki-fm: {rel} kept changing under us; nothing written", file=sys.stderr)
+        return 1
+
+    summary = ", ".join(
+        f"{k} ({len(v.split())}w)" if k in ("summary", "next", "ask") and v else (k if v else f"-{k}")
+        for k, v in updates.items())
+    print(f"set {rel}: {summary}")
+    board_py = os.path.join(os.path.dirname(HERE), "hooks", "board.py")
+    if board and os.path.isfile(board_py):
+        subprocess.run([sys.executable, board_py, kb, "--write"],
+                       capture_output=True, text=True)
+    return 0
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="wiki-fm", add_help=True)
+    ap.add_argument("cmd", choices=["get", "set", "caps"])
+    ap.add_argument("page", nargs="?")
+    ap.add_argument("rest", nargs="*")
+    ap.add_argument("--root")
+    ap.add_argument("--no-board", action="store_true")
+    a = ap.parse_args()
+    if a.cmd == "caps":
+        return cmd_caps(os.path.expanduser(a.root) if a.root else wikilib.resolve_root(None))
+    if not a.page:
+        ap.error("PAGE is required")
+    kb, path, rel = locate(a.page, a.root)
+    if not os.path.isfile(path):
+        raise SystemExit(f"wiki-fm: no such page: {path}")
+    if a.cmd == "get":
+        return cmd_get(path, a.rest)
+    if not a.rest:
+        ap.error("set needs at least one FIELD=VALUE")
+    return cmd_set(kb, path, rel, a.rest, not a.no_board)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

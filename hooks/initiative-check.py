@@ -14,6 +14,7 @@ Ends with a machine line: INIT-FAIL=<n>
 """
 import os
 import re
+import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -25,17 +26,19 @@ schema = cfg.get("initiative_schema")
 issues = []
 
 
-def wc(s):
-    return len(s.split()) if s else 0
+# WIKI_CHECK_INDEX=1 (set by pre-commit) reads the staged version of each file, so the gate
+# judges what is being committed rather than whatever else is dirty in the tree.
+INDEX = os.environ.get("WIKI_CHECK_INDEX") == "1"
+
+
+def src(rel):
+    if not INDEX:
+        return wikilib.read(KB, rel)
+    r = subprocess.run(["git", "show", ":" + rel], cwd=KB, capture_output=True, text=True)
+    return r.stdout if r.returncode == 0 else ""
 
 
 if schema:
-    kinds = set(schema.get("assignment_kind", []))
-    statuses = set(schema.get("assignment_status", []))
-    waiting = set(schema.get("waiting_on", []))
-    summary_max = schema.get("summary_max_words", 0)
-    next_max = schema.get("next_max_words", 0)
-    ask_max = schema.get("ask_max_words", 0)
     queue_max = schema.get("queue_max", 0)
     state_budget = schema.get("state_word_budget", 0)
 
@@ -43,7 +46,7 @@ if schema:
     for f in wikilib.git_files(KB):
         if not f.startswith("initiatives/") or os.path.basename(f) == "index.md":
             continue
-        text = wikilib.read(KB, f)
+        text = src(f)
         fmblock = re.match(r"^---\n(.*?)\n---", text, re.S)
         if not fmblock:
             continue
@@ -52,45 +55,18 @@ if schema:
             continue
         if wikilib.frontmatter_value(fm, "board") == "false":
             continue
-
-        kind = wikilib.frontmatter_value(fm, "assignment_kind")
-        status = wikilib.frontmatter_value(fm, "assignment_status")
-        priority = wikilib.frontmatter_value(fm, "priority")
-        priority_set = wikilib.frontmatter_value(fm, "priority_set")
-        cycle = wikilib.frontmatter_value(fm, "cycle")
-        summary = wikilib.frontmatter_value(fm, "summary")
-        nxt = wikilib.frontmatter_value(fm, "next")
-        wo = wikilib.frontmatter_value(fm, "waiting_on") or "none"
-        ask = wikilib.frontmatter_value(fm, "ask")
-
-        if kinds and kind not in kinds:
-            issues.append(f"  INIT-FAIL {f} assignment_kind: missing or not in {sorted(kinds)}")
-        if statuses and status not in statuses:
-            issues.append(f"  INIT-FAIL {f} assignment_status: missing or not in {sorted(statuses)}")
-        if priority is not None and not priority_set:
-            issues.append(f"  INIT-FAIL {f} priority_set: required because priority is set")
-        if kind == "pitch" and not cycle:
-            issues.append(f"  INIT-FAIL {f} cycle: required because assignment_kind is pitch")
-        if waiting and wo not in waiting:
-            issues.append(f"  INIT-FAIL {f} waiting_on: '{wo}' not in {sorted(waiting)}")
-        if wo != "none" and not ask:
-            issues.append(f"  INIT-FAIL {f} ask: required because waiting_on is '{wo}', not 'none'")
-        if summary_max and summary and wc(summary) > summary_max:
-            issues.append(f"  INIT-FAIL {f} summary: {wc(summary)}w > {summary_max}w cap")
-        if next_max and nxt and wc(nxt) > next_max:
-            issues.append(f"  INIT-FAIL {f} next: {wc(nxt)}w > {next_max}w cap")
-        if ask_max and ask and wc(ask) > ask_max:
-            issues.append(f"  INIT-FAIL {f} ask: {wc(ask)}w > {ask_max}w cap")
-        if wo == "owner":
+        for field, msg in wikilib.initiative_issues(schema, fm):
+            issues.append(f"  INIT-FAIL {f} {field}: {msg}")
+        if (wikilib.frontmatter_value(fm, "waiting_on") or "none") == "owner":
             owner_asks += 1
 
-    oa_text = wikilib.read(KB, "open-asks/owner.md")
+    oa_text = src("open-asks/owner.md")
     oa_items = len(re.findall(r"(?m)^- ", oa_text))
     queue_total = owner_asks + oa_items
     if queue_max and queue_total > queue_max:
         issues.append(f"  INIT-FAIL open-asks/owner.md queue: {queue_total} items > {queue_max} cap")
 
-    state_text = wikilib.read(KB, "STATE.md")
+    state_text = src("STATE.md")
     if state_text:
         m = re.search(r"(?ms)^## Inbox\b.*?(?=^## |\Z)", state_text)
         if m and re.search(r"(?m)^- ", m.group(0)):
@@ -98,8 +74,8 @@ if schema:
                            "heading; write the initiative's frontmatter and a journal line")
         if state_budget:
             stripped = re.sub(r"(?s)<!-- board:begin.*?board:end -->", "", state_text)
-            if wc(stripped) > state_budget:
-                issues.append(f"  INIT-FAIL STATE.md hand-written: {wc(stripped)}w > "
+            if len(stripped.split()) > state_budget:
+                issues.append(f"  INIT-FAIL STATE.md hand-written: {len(stripped.split())}w > "
                                f"{state_budget}w cap")
 
 for line in issues:

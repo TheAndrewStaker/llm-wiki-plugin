@@ -20,5 +20,7 @@ follows the Karpathy LLM-Wiki pattern + Google OKF).
 - **A subagent's report is not an Inbox entry.** File it as a page first, then leave the one-line
   pointer. Delegated sessions have several reports to land and no cheaper place to put them, which is
   how a handoff meant to be read in one pass becomes a second untriaged backlog.
+- Change initiative frontmatter with `python3 "WIKI_ROOT_PLACEHOLDER/bin/wiki-fm" set <page> field=value`,
+  not a hand edit: it refuses what the commit gate would reject, so the failure lands on you, now.
 - Follow the wiki's conventions (in `KNOWLEDGE.md`): `type:` frontmatter, relative-md links, link-don't-
   duplicate, supersede-don't-delete.

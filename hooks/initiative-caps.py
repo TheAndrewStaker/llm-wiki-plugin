@@ -84,8 +84,9 @@ def main():
           file=sys.stderr)
     for field, count, cap in over:
         print(f"  {field}: {count} words > {cap} cap", file=sys.stderr)
-    print("Shorten the field now. Depth belongs in the page body as a dated log entry;"
-          " frontmatter is the board's one-line view of it.", file=sys.stderr)
+    print("Shorten the field now, ideally with `wiki-fm set <page> <field>=<value>`, which"
+          " validates before writing. Depth belongs in the page body as a dated log entry.",
+          file=sys.stderr)
     return 2
 
 

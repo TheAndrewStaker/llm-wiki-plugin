@@ -83,6 +83,10 @@ with `reflect`.
 search, `--type/--tag/--neighbors`) to locate pages; link-walk; **answer with citations** (relative-md
 links to the pages used); **file good answers back as pages** so explorations compound.
 
+**Board state** (initiative frontmatter): write it with `python3 "$WIKI_ROOT/bin/wiki-fm" set <page>
+field=value ...`, which validates against `initiative_schema` before writing, refuses an over-cap or
+off-enum value with the count, and regenerates the board. `wiki-fm caps` prints the limits.
+
 **Lint** (`hooks/lint.sh`, deterministic, pre-commit-gated): broken links, orphans, missing `type:`,
 commit-gate tokens, stale dates, title/alias collisions (two pages claiming one name), pages missing
 from their dir's `index.md`, per-type required frontmatter (`type_requirements` in `wiki.config.json`),
