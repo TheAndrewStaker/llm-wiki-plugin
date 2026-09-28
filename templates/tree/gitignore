@@ -26,5 +26,6 @@
 #   !/wiki.config.json
 #   !/entities/  (and the other content dirs)
 #   !/hooks/  !/skills/  !/commands/
+#   /skills/synced/   (Claude Code's synced account skills: harness-owned, rewritten on sync)
 # In that layout sources-media/ is already ignored by the /* rule — never add a
 # !/sources-media/ re-include.

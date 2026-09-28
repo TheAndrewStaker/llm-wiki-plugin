@@ -11,13 +11,10 @@ Prints one matching FILE per line. Silent on any error.
 """
 import json
 import os
-import re
 import sys
 
-WRITE_MARKERS = re.compile(
-    r"(\bsed\s+-i|\bperl\s+-[a-z]*i|\btee\b|open\([^)]*['\"][wa]|write_text|\.write\(|"
-    r"\bwiki-fm\s+set\b|\bmv\s|\bcp\s)")
-
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import wikilib  # noqa: E402
 
 def main():
     if len(sys.argv) < 4:
@@ -50,10 +47,8 @@ def main():
                             hit.add(f)
                 elif name == "Bash":
                     cmd = inp.get("command") or ""
-                    marked = bool(WRITE_MARKERS.search(cmd))
                     for f in files:
-                        redirect = re.search(r">>?\s*['\"]?[^\s'\"]*" + re.escape(f), cmd)
-                        if f in cmd and (marked or redirect):
+                        if wikilib.bash_writes(cmd, f):
                             hit.add(f)
     for f in files:
         if f in hit:

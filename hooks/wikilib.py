@@ -154,6 +154,21 @@ def frontmatter_value(text, key):
     return m.group(1).strip() if m else None
 
 
+_WRITE_MARKERS = re.compile(
+    r"(\bsed\s+-i|\bperl\s+-[a-z]*i|\btee\b|open\([^)]*['\"][wa]|write_text|\.write\(|"
+    r"\bwiki-fm\s+set\b|\bmv\s|\bcp\s)")
+
+
+def bash_writes(cmd, rel):
+    """True when a shell command names `rel` and visibly writes it: as a redirect target,
+    or alongside an in-place edit, a file opened for writing, or wiki-fm set."""
+    if rel not in cmd:
+        return False
+    if re.search(r">>?\s*['\"]?[^\s'\"]*" + re.escape(rel), cmd):
+        return True
+    return bool(_WRITE_MARKERS.search(cmd))
+
+
 def queue_owner(schema):
     """(waiting_on key, display label) for the wiki owner's personal queue; the owner's
     file-level asks live at open-asks/<key>.md."""

@@ -1829,6 +1829,19 @@ printf '{"tool_input":{"file_path":"%s"}}' "$IW/initiatives/long-next.md" \
   | WIKI_ROOT="$IW" python3 "$H/initiative-caps.py" >/dev/null 2>&1
 assert "the stdin hook payload carries the same verdict" "2" "$?"
 
+printf '{"tool_name":"Bash","cwd":"%s","tool_input":{"command":"python3 - <<E\\nopen(\\"initiatives/long-next.md\\",\\"w\\").write(t)\\nE"}}' "$IW" \
+  | WIKI_ROOT="$IW" python3 "$H/initiative-caps.py" >/dev/null 2>&1
+assert "a Bash write to an over-cap page is caught" "2" "$?"
+printf '{"tool_name":"Bash","cwd":"%s","tool_input":{"command":"cat initiatives/long-next.md 2>/dev/null"}}' "$IW" \
+  | WIKI_ROOT="$IW" python3 "$H/initiative-caps.py" >/dev/null 2>&1
+assert "a Bash read of the same page is not" "0" "$?"
+printf '{"tool_name":"Bash","cwd":"/","tool_input":{"command":"sed -i.bak s/a/b/ initiatives/long-next.md"}}' \
+  | WIKI_ROOT="$IW" python3 "$H/initiative-caps.py" >/dev/null 2>&1
+assert "a relative path resolves against the wiki root too" "2" "$?"
+printf '{"tool_name":"Bash","tool_input":{"command":"ls"}}' \
+  | WIKI_ROOT="$IW" python3 "$H/initiative-caps.py" >/dev/null 2>&1
+assert "an unrelated Bash call is silent" "0" "$?"
+
 printf 'not json' | WIKI_ROOT="$IW" python3 "$H/initiative-caps.py" >/dev/null 2>&1
 assert "a malformed payload never fails the edit" "0" "$?"
 rm -f "$IW/initiatives/long-next.md"
