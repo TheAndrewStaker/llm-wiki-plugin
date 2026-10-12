@@ -797,10 +797,57 @@ python3 "$ROOT/bin/wiki-okf" export "$OKF_WIKI" "$OKF_OUT" >/dev/null; rc=$?
 assert "OKF export succeeds" "0" "$rc"
 python3 "$ROOT/bin/wiki-okf" validate "$OKF_OUT" >/dev/null; rc=$?
 assert "OKF exported bundle validates" "0" "$rc"
-assert_contains "OKF root index declares okf_version" 'okf_version: "0.1"' "$(head -3 "$OKF_OUT/index.md")"
+assert_contains "OKF root index declares okf_version" 'okf_version: "0.2"' "$(head -3 "$OKF_OUT/index.md")"
 assert "OKF per-dir index has no frontmatter" "0" "$(head -1 "$OKF_OUT/concepts/index.md" | grep -c '^---$')"
 assert_contains "OKF exporter generates navigation section" "# concepts" "$(cat "$OKF_OUT/concepts/index.md")"
 assert "OKF export excludes raw sources" "no" "$([ -e "$OKF_OUT/sources/private.md" ] && echo yes || echo no)"
+
+echo "--- OKF v0.2: trust families synthesized at export, judged at validation ---"
+printf '{"okf": {"generated_by": "wiki-export/0.1.0", "verifier": "human:owner"}}\n' > "$OKF_WIKI/wiki.config.json"
+cat > "$OKF_WIKI/concepts/trust.md" <<'EOF'
+---
+type: concept
+title: Trust signals
+timestamp: 2026-01-02
+reviewed: 2026-01-03
+synthesized_from: [https://example.com/spec, exported.md, ../sources/private.md]
+stale_after: 2026-12-31
+---
+Status: Superseded by [exported](exported.md).
+EOF
+python3 "$ROOT/bin/wiki-okf" export "$OKF_WIKI" "$OKF_OUT" --force >/dev/null; rc=$?
+assert "OKF v0.2 export succeeds" "0" "$rc"
+trust=$(cat "$OKF_OUT/concepts/trust.md")
+assert_contains "a date-only timestamp gains an offset" "timestamp: 2026-01-02T12:00:00+00:00" "$trust"
+assert_contains "generated carries the configured producer" "by: wiki-export/0.1.0" "$trust"
+assert_contains "generated.at mirrors the timestamp" "at: 2026-01-02T12:00:00+00:00" "$trust"
+assert_contains "verified comes from reviewed" "- by: human:owner" "$trust"
+assert_contains "a URL source keeps its resource" 'resource: "https://example.com/spec"' "$trust"
+assert_contains "a bundled page source is bundle-relative" 'resource: "/concepts/exported.md"' "$trust"
+assert "a source outside the bundle gets no sources entry" "0" "$(printf '%s' "$trust" | grep -c 'resource: .*private')"
+assert "the legacy synthesized_from line is kept" "1" "$(printf '%s' "$trust" | grep -c '^synthesized_from:')"
+assert_contains "the supersede marker maps to deprecated" "status: deprecated" "$trust"
+assert_contains "stale_after gains an offset" "stale_after: 2026-12-31T12:00:00+00:00" "$trust"
+assert "a page without a producer config gets no generated block" "0" "$(grep -c '^generated:' "$OKF_OUT/concepts/exported.md")"
+printf '%s\n' '---' 'type: concept' 'title: Bad status' 'status: retired' '---' 'x' > "$OKF_OUT/concepts/badstatus.md"
+okf_bad=$(python3 "$ROOT/bin/wiki-okf" validate "$OKF_OUT" 2>&1); rc=$?
+assert "a status outside the enum fails validation" "1" "$rc"
+assert_contains "and is named" "INVALID_STATUS concepts/badstatus.md" "$okf_bad"
+rm "$OKF_OUT/concepts/badstatus.md"
+printf '%s\n' '---' 'type: Attested Computation' 'title: No runtime' '---' 'x' > "$OKF_OUT/concepts/attested.md"
+okf_bad=$(python3 "$ROOT/bin/wiki-okf" validate "$OKF_OUT" 2>&1); rc=$?
+assert "an attested computation without runtime fails" "1" "$rc"
+assert_contains "naming the page" "MISSING_RUNTIME concepts/attested.md" "$okf_bad"
+rm "$OKF_OUT/concepts/attested.md"
+printf '%s\n' '---' 'type: concept' 'title: Naive' 'timestamp: 2026-01-01' '---' 'x' > "$OKF_OUT/concepts/naive.md"
+okf_bad=$(python3 "$ROOT/bin/wiki-okf" validate "$OKF_OUT" 2>&1); rc=$?
+assert "a date-only timestamp in a bundle fails" "1" "$rc"
+assert_contains "as INVALID_TIMESTAMP" "INVALID_TIMESTAMP concepts/naive.md timestamp" "$okf_bad"
+rm "$OKF_OUT/concepts/naive.md"
+printf '%s\n' '---' 'okf_version: "0.1"' '---' '' '# Contents' > "$OKF_OUT/index.md"
+python3 "$ROOT/bin/wiki-okf" validate "$OKF_OUT" >/dev/null; rc=$?
+assert "a 0.1 root index still validates" "0" "$rc"
+printf '%s\n' '---' 'okf_version: "0.2"' '---' '' '# Contents' > "$OKF_OUT/index.md"
 printf '%s\n' '---' 'type: [broken' '---' 'invalid YAML' > "$OKF_OUT/concepts/invalid.md"
 okf_invalid=$(python3 "$ROOT/bin/wiki-okf" validate "$OKF_OUT" 2>&1); rc=$?
 assert "OKF validator rejects unparseable YAML" "1" "$rc"
@@ -2205,6 +2252,191 @@ python3 "$H/board.py" "$BW" --write >/dev/null 2>&1
 assert "a stamp-only difference leaves the file alone" "$stale" "$(cat "$BW/STATE.md")"
 assert "the first write did render the board" "yes" "$(printf '%s' "$first" | grep -q '## Board' && echo yes || echo no)"
 rm -rf "$BW"
+
+# ==== transition rules, standing aims, the log guard, per-commit missed links ====
+echo "--- transition rules: verify at done and the active cap, judged against HEAD ---"
+TW="$(mktemp -d)/wiki"
+mkdir -p "$TW"/{initiatives,hooks}
+cp "$H"/* "$TW/hooks/" 2>/dev/null
+chmod +x "$TW"/hooks/*.sh "$TW"/hooks/*.py "$TW/hooks/pre-commit" 2>/dev/null
+cat > "$TW/wiki.config.json" <<'EOF'
+{"initiative_schema": {"assignment_kind": ["self"],
+  "assignment_status": ["planning", "active", "parked", "done"], "waiting_on": ["none"],
+  "next_max_words": 8, "verify_max_words": 8,
+  "required_at_status": {"done": ["verify"]}, "active_max": 1}}
+EOF
+mk() { # mk <slug> <status> [verify]
+  printf -- '---\ntype: initiative\ntitle: %s\ntimestamp: 2026-01-01\nassignment_kind: self\nassignment_status: %s\nnext: ship it\nwaiting_on: none\n%s---\nbody\n' \
+    "$1" "$2" "${3:+verify: $3
+}" > "$TW/initiatives/$1.md"
+}
+mk a active; mk b planning; mk old-done done
+git -C "$TW" init -q; git -C "$TW" config user.name t; git -C "$TW" config user.email t@t
+git -C "$TW" add -A && git -C "$TW" commit -qm init >/dev/null 2>&1
+assert "a grandfathered done page without verify passes" "INIT-FAIL=0" "$(python3 "$H/initiative-check.py" "$TW" | tail -1)"
+mk b done
+out=$(python3 "$H/initiative-check.py" "$TW")
+assert_contains "a page becoming done without verify fails" "INIT-FAIL initiatives/b.md verify: required when assignment_status becomes 'done'" "$out"
+out=$(python3 "$H/initiative-caps.py" "$TW/initiatives/b.md" "$TW" 2>&1); rc=$?
+assert "the edit hook says so at the edit" "2" "$rc"
+assert_contains "with the rule" "required when assignment_status becomes 'done'" "$out"
+mk b done "tests green on main"
+assert "with verify it passes" "INIT-FAIL=0" "$(python3 "$H/initiative-check.py" "$TW" | tail -1)"
+git -C "$TW" add -A && git -C "$TW" commit -qm done >/dev/null 2>&1
+FM="python3 $ROOT/bin/wiki-fm"
+out=$($FM set "$TW/initiatives/b.md" verify= 2>&1); rc=$?
+assert "wiki-fm refuses to drop verify from a done page" "1" "$rc"
+assert_contains "and says why" "cannot be removed while assignment_status is 'done'" "$out"
+mk b done
+out=$(python3 "$H/initiative-check.py" "$TW")
+assert_contains "the gate catches a done page that lost its verify" "cannot be removed while assignment_status is 'done'" "$out"
+git -C "$TW" checkout -q -- initiatives/b.md
+mk c planning; git -C "$TW" add -A && git -C "$TW" commit -qm c >/dev/null 2>&1
+mk c active
+out=$(python3 "$H/initiative-check.py" "$TW")
+assert_contains "activating over the cap fails the activating page" "INIT-FAIL initiatives/c.md assignment_status: activating makes 2 active > 1 cap" "$out"
+assert "and only that page" "1" "$(printf '%s\n' "$out" | grep -c '^  INIT-FAIL ')"
+out=$(python3 "$H/initiative-caps.py" "$TW/initiatives/c.md" "$TW" 2>&1); rc=$?
+assert "the edit hook reports the cap at the edit" "2" "$rc"
+assert_contains "and names parking as the exit" "park another initiative first" "$out"
+mk a parked
+assert "parking one frees the slot" "INIT-FAIL=0" "$(python3 "$H/initiative-check.py" "$TW" | tail -1)"
+git -C "$TW" add -A && git -C "$TW" commit -qm swap >/dev/null 2>&1
+out=$($FM set "$TW/initiatives/b.md" assignment_status=active 2>&1); rc=$?
+assert "wiki-fm refuses a second activation" "1" "$rc"
+assert_contains "with the count" "activating makes 2 active > 1 cap" "$out"
+assert_contains "the board header shows the active count" "active 1/1" "$(python3 "$H/board.py" "$TW" 2>&1)"
+git -C "$TW" mv initiatives/old-done.md initiatives/renamed-done.md
+assert "a renamed grandfathered page still passes in index mode" "INIT-FAIL=0" "$(WIKI_CHECK_INDEX=1 python3 "$H/initiative-check.py" "$TW" | tail -1)"
+rm -rf "$(dirname "$TW")"
+
+echo "--- standing aims: grammar and carrier at commit, carrier state and review age at session start ---"
+AW="$(mktemp -d)/wiki"
+mkdir -p "$AW"/{initiatives,analyses,hooks}
+cp "$H"/* "$AW/hooks/" 2>/dev/null
+cat > "$AW/wiki.config.json" <<'EOF'
+{"aims": {"file": "ROADMAP.md", "heading": "Standing aims"}, "reflect_nudge_days": 10,
+ "initiative_schema": {"assignment_kind": ["self"], "assignment_status": ["active", "done"], "waiting_on": ["none"]}}
+EOF
+printf -- '---\ntype: index\ntitle: K\n---\nmap\n' > "$AW/KNOWLEDGE.md"
+carrier() { printf -- '---\ntype: initiative\ntitle: Carrier\ntimestamp: 2026-01-01\nassignment_kind: self\nassignment_status: %s\nnext: go\nwaiting_on: none\n---\nx\n' "$1" > "$AW/initiatives/carrier.md"; }
+carrier active
+aims_file() { printf -- '---\ntype: roadmap\ntitle: R\n---\n## Standing aims\n%s\n\n## Other\n- not an aim line\n' "$1" > "$AW/ROADMAP.md"; }
+L1='- aim:log-everything · 2026-01-01 · agents leave a trace · carried by: [Carrier](initiatives/carrier.md) · reviewed: 2026-01-01'
+L2='- aim:voice · 2026-01-01 · dictation that works · carried by: none · reviewed: 2026-01-01'
+aims_file "$L1
+$L2"
+git -C "$AW" init -q; git -C "$AW" config user.name t; git -C "$AW" config user.email t@t
+git -C "$AW" add -A && git -C "$AW" commit -qm init >/dev/null 2>&1
+assert "well-formed aims pass" "INIT-FAIL=0" "$(python3 "$H/initiative-check.py" "$AW" | tail -1)"
+aims_file "$L1
+- aim:bad · 2026-01-01 · no carrier field"
+assert_contains "a malformed aim line fails the gate" "INIT-FAIL ROADMAP.md: aim line does not parse" "$(python3 "$H/initiative-check.py" "$AW")"
+aims_file "$L1
+- aim:ghost · 2026-01-01 · points nowhere · carried by: [Nope](analyses/nope.md) · reviewed: 2026-01-01"
+assert_contains "a carrier that is not an initiative page fails" "aim:ghost carrier analyses/nope.md is not an initiative page" "$(python3 "$H/initiative-check.py" "$AW")"
+aims_file "$L1
+$L1"
+assert_contains "a duplicate live id fails" "aim:log-everything appears twice without 'superseded'" "$(python3 "$H/initiative-check.py" "$AW")"
+aims_file "$L1 · superseded 2026-02-01
+- aim:log-everything · 2026-02-01 · agents leave a trace, always · carried by: [Carrier](initiatives/carrier.md) · reviewed: 2026-02-01
+$L2"
+assert "a superseded line plus its successor passes" "INIT-FAIL=0" "$(python3 "$H/initiative-check.py" "$AW" | tail -1)"
+carrier done
+out=$(WIKI_ROOT="$AW" bash "$H/session-status.sh" 2>&1)
+assert_contains "session start names an aim whose carrier is done" "aim:log-everything carrier is done" "$out"
+assert_contains "and an aim whose review is overdue" "aim:voice unreviewed" "$out"
+rm -rf "$(dirname "$AW")"
+
+echo "--- log guard: work with no wiki trace blocks the stop once, after the commit ---"
+LG="$(mktemp -d)/wiki"
+mkdir -p "$LG"/{initiatives,journal,hooks}
+cp "$H"/* "$LG/hooks/" 2>/dev/null
+chmod +x "$LG"/hooks/*.sh "$LG"/hooks/*.py "$LG/hooks/pre-commit" 2>/dev/null
+printf '{"auto_commit": true, "log_guard": {"enabled": true}}\n' > "$LG/wiki.config.json"
+printf -- '---\ntype: index\ntitle: K\n---\nmap\n' > "$LG/KNOWLEDGE.md"
+printf -- '---\ntype: initiative\ntitle: A\ntimestamp: 2026-01-01\nnext: go\n---\nx\n' > "$LG/initiatives/a.md"
+printf '/.auto-commit-failed\n' > "$LG/.gitignore"
+git -C "$LG" init -q; git -C "$LG" config user.name t; git -C "$LG" config user.email t@t
+git -C "$LG" config core.hooksPath hooks
+git -C "$LG" add -A && git -C "$LG" commit -qm init >/dev/null 2>&1
+REC="python3 $H/session-record.py $LG"
+OUTSIDE="$(mktemp -d)"
+stop() { printf '{"hook_event_name":"Stop","stop_hook_active":%s,"session_id":"%s"}' "$1" "$2" | WIKI_ROOT="$LG" bash "$H/auto-commit.sh" 2>&1; }
+printf '{"session_id":"s1","tool_name":"Bash","cwd":"%s","tool_input":{"command":"git commit -m x"}}' "$OUTSIDE" | $REC
+printf '{"session_id":"s1","tool_name":"Bash","cwd":"%s","tool_input":{"command":"git commit -m y"}}' "$LG" | $REC
+printf '{"session_id":"s1","tool_name":"Write","tool_input":{"file_path":"%s/code.py"}}' "$OUTSIDE" | $REC
+assert "a commit outside the wiki is the one work event recorded" "1" "$(grep -c $'\twork\t' "$LG/.git/compendium/sessions/s1.tsv")"
+printf 'edited\n' >> "$LG/initiatives/a.md"
+head0=$(git -C "$LG" rev-parse HEAD)
+out=$(stop false s1); rc=$?
+assert "the stop is blocked" "2" "$rc"
+assert_contains "with the work named" "git commit -m x" "$out"
+assert_contains "and the way to log" "wiki-fm set" "$out"
+assert "the wiki change was still committed first" "yes" "$([ "$(git -C "$LG" rev-parse HEAD)" != "$head0" ] && echo yes || echo no)"
+out=$(stop true s1); rc=$?
+assert "a continuation is never blocked" "0" "$rc"
+printf '{"session_id":"s1","tool_name":"Bash","cwd":"%s","tool_input":{"command":"wiki-fm set initiatives/a.md next=\\"x\\""},"tool_response":{"stdout":"","stderr":"wiki-fm: refused, initiatives/a.md would fail the commit gate"}}' "$LG" | $REC
+out=$(stop false s1); rc=$?
+assert "a refused log command does not satisfy the guard" "2" "$rc"
+printf '{"session_id":"s1","tool_name":"Bash","cwd":"%s","tool_input":{"command":"wiki-fm set initiatives/a.md next=\\"done\\""},"tool_response":{"stdout":"set initiatives/a.md: next (1w)","stderr":""}}' "$LG" | $REC
+out=$(stop false s1); rc=$?
+assert "after a log the stop passes" "0" "$rc"
+printf '{"session_id":"s1","agent_id":"sub1","tool_name":"Bash","cwd":"%s","tool_input":{"command":"gh pr create --fill"}}' "$OUTSIDE" | $REC
+out=$(stop false s1); rc=$?
+assert "a subagent's PR on the same session is work" "2" "$rc"
+printf '{"session_id":"s1","tool_name":"Edit","tool_input":{"file_path":"%s/journal/2026-01-01.md"}}' "$LG" | $REC
+out=$(stop false s1); rc=$?
+assert "a journal edit is a log" "0" "$rc"
+printf '{"hook_event_name":"SessionEnd","session_id":"s1"}' | WIKI_ROOT="$LG" bash "$H/auto-commit.sh" >/dev/null 2>&1
+assert "SessionEnd clears the record" "no" "$([ -e "$LG/.git/compendium/sessions/s1.tsv" ] && echo yes || echo no)"
+printf '{"auto_commit": true, "log_guard": {"enabled": false}}\n' > "$LG/wiki.config.json"
+printf '{"session_id":"s2","tool_name":"Bash","cwd":"%s","tool_input":{"command":"git commit -m z"}}' "$OUTSIDE" | $REC
+assert "disabled, nothing is recorded" "no" "$([ -e "$LG/.git/compendium/sessions/s2.tsv" ] && echo yes || echo no)"
+rm -rf "$(dirname "$LG")" "$OUTSIDE"
+
+echo "--- missed_links_added: a commit that newly names a page unlinked is refused; bystanders pass ---"
+DW="$(mktemp -d)/wiki"
+mkdir -p "$DW"/{entities,notes,hooks}
+cp "$H"/* "$DW/hooks/" 2>/dev/null
+chmod +x "$DW"/hooks/*.sh "$DW"/hooks/*.py "$DW/hooks/pre-commit" 2>/dev/null
+printf '{"auto_commit": true, "advisory_budgets": {"missed_links_added": 0}}\n' > "$DW/wiki.config.json"
+printf -- '---\ntype: index\ntitle: K\n---\n[alpha](entities/alpha.md) [note](notes/n.md)\n' > "$DW/KNOWLEDGE.md"
+printf -- '---\ntype: entity\ntitle: Alpha Widget\n---\nx [k](../KNOWLEDGE.md)\n' > "$DW/entities/alpha.md"
+printf -- '---\ntype: notes\ntitle: N\n---\nnothing yet [k](../KNOWLEDGE.md)\n' > "$DW/notes/n.md"
+printf '/.auto-commit-failed\n' > "$DW/.gitignore"
+git -C "$DW" init -q; git -C "$DW" config user.name t; git -C "$DW" config user.email t@t
+git -C "$DW" config core.hooksPath hooks
+git -C "$DW" add -A && git -C "$DW" commit -qm init >/dev/null 2>&1
+printf -- '---\ntype: notes\ntitle: N\n---\nThe Alpha Widget is here [k](../KNOWLEDGE.md)\n' > "$DW/notes/n.md"
+out=$(python3 "$H/missed-links.py" --delta "$DW")
+assert_contains "delta names the page and the term" "MISSED-LINK-ADDED notes/n.md (1: Alpha Widget)" "$out"
+assert_contains "and counts pages" "MISSED_LINKS_ADDED=1" "$out"
+git -C "$DW" add -A
+out=$(WIKI_CHECK_INDEX=1 WIKI_LINT_GATE_ONLY=1 bash "$H/lint.sh" "$DW" 2>&1); rc=$?
+assert "the gate refuses the commit" "1" "$rc"
+assert_contains "and names the page in gate-only output" "MISSED-LINK-ADDED notes/n.md" "$out"
+git -C "$DW" reset -q
+TRW="$(dirname "$DW")/w.jsonl"
+python3 - "$TRW" "$DW" <<'PYEOF'
+import json, sys
+tr, dw = sys.argv[1:3]
+open(tr, "w").write(json.dumps({"type": "assistant", "message": {"content": [
+    {"type": "tool_use", "name": "Write", "input": {"file_path": dw + "/notes/n.md"}}]}}) + "\n")
+PYEOF
+printf 'other\n' > "$DW/other.txt"
+out=$(printf '{"hook_event_name":"Stop","stop_hook_active":false,"transcript_path":"%s"}' "$TRW" | WIKI_ROOT="$DW" bash "$H/auto-commit.sh" 2>&1); rc=$?
+assert "the writer is blocked once" "2" "$rc"
+assert_contains "with the missed link named" "MISSED-LINK-ADDED notes/n.md" "$out"
+out=$(printf '{"hook_event_name":"Stop","stop_hook_active":false}' | WIKI_ROOT="$DW" bash "$H/auto-commit.sh" 2>&1); rc=$?
+assert "a bystander commits around it" "0" "$rc"
+assert "committing its own file" "other.txt" "$(git -C "$DW" show --name-only --format= HEAD | grep other)"
+assert "and holding the unlinked page back" " M notes/n.md" "$(git -C "$DW" status --short notes/n.md)"
+printf -- '---\ntype: notes\ntitle: N\n---\nThe [Alpha Widget](../entities/alpha.md) is here [k](../KNOWLEDGE.md)\n' > "$DW/notes/n.md"
+printf '{"hook_event_name":"Stop","stop_hook_active":false,"transcript_path":"%s"}' "$TRW" | WIKI_ROOT="$DW" bash "$H/auto-commit.sh" >/dev/null 2>&1; rc=$?
+assert "linked, the page commits" "0" "$rc"
+assert "and the tree is clean" "" "$(git -C "$DW" status --short)"
+rm -rf "$(dirname "$DW")"
 
 echo
 echo "======================================"

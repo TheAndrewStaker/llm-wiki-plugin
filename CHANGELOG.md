@@ -6,6 +6,37 @@ This project follows Keep a Changelog and intends to use Semantic Versioning aft
 
 ### Added
 
+- Log guard (`log_guard` config, off by default): a PostToolUse recorder (`hooks/session-record.py`)
+  notes each session's work events (a commit or PR command run outside the wiki; optionally any file
+  write outside it) and log events (a write under `initiatives/` or `journal/`, `wiki-fm set`,
+  `journal-append`). At Stop, `hooks/log-guard.py` blocks once, through the auto-commit hook's exit,
+  when work followed the last log event, naming the work and the two ways to record it. A
+  continuation never re-evaluates, so a stop chain blocks at most once. Subagent tool calls arrive
+  on the parent session, so delegated work and delegated logging both count.
+- Transition rules in `initiative_schema`: `required_at_status` (`{"done": ["verify"]}`) fails a
+  page that reaches a status without the field, or that had it and drops it; pages already in the
+  status without it are grandfathered. `active_max` fails a page becoming `active` when the active
+  count would exceed the cap, and the board header shows `active N/M`. Both are judged against HEAD
+  (staged renames followed) by the commit gate, at the edit by `initiative-caps.py`, and against the
+  on-disk page by `wiki-fm set`.
+- `missed-links.py --delta` and the `missed_links_added` budget: the commit gate can refuse a page
+  that newly names a wiki page without linking it, judged per changed page against HEAD, so the
+  author hears it and a wiki-wide total never blocks someone else's commit.
+- The auto-commit hook attributes every gate line that names a page (schema, hard checks, budgeted
+  counters) to the session that wrote the page, not only the initiative schema; a failed budget now
+  prints the offending lines, in gate-only mode too.
+- Standing aims (`aims` config: file and heading): append-only `aim:<slug>` lines checked for
+  grammar, dates and a carrier that is an initiative page at commit; session start names aims whose
+  carrier is done or parked or whose review is overdue; the `reflect` skill reviews them against the
+  board.
+- `templates/scope.md`: a sub-item template (problem, files and interfaces, out of scope, automated
+  check, manual check with the setup command, done when).
+- OKF v0.2 export: `wiki-okf export` synthesizes `generated`, `verified`, `sources`, `status` and
+  offset-bearing timestamps from what pages already carry (config `okf.generated_by`,
+  `okf.verifier`), stamps `okf_version: "0.2"`, and the validator accepts any `X.Y` version, rejects
+  a `status` outside the spec enum, a timestamp without an offset, and an `Attested Computation`
+  without `runtime`.
+
 - Optional initiative `verify` field: how to tell `next` is done. Capped by `verify_max_words`
   like `next`, checked by the commit gate and `wiki-fm`, and shown on the board row after `next`.
 - Board period auto-derivation: optional `cycle_source` config (glob of per-period markdown
