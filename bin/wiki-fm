@@ -120,8 +120,12 @@ def cmd_set(kb, path, rel, pairs, board):
         if schema and wikilib.frontmatter_value(fm_new, "type") == "initiative" \
                 and wikilib.frontmatter_value(fm_new, "board") != "false" \
                 and rel.startswith("initiatives/"):
+            # The page as it was before this edit is the transition baseline, so a done
+            # page cannot shed its verify in a later call, and activation counts this page.
+            n_active = wikilib.active_count(kb, extra={rel: fm_new}) \
+                if schema.get("active_max") else None
             old = set(wikilib.initiative_issues(schema, fm_old))
-            bad = [i for i in wikilib.initiative_issues(schema, fm_new)
+            bad = [i for i in wikilib.initiative_issues(schema, fm_new, fm_old, n_active)
                    if i not in old or i[0] in updates]
             if bad:
                 print(f"wiki-fm: refused, {rel} would fail the commit gate; nothing written.",

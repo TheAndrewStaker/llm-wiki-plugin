@@ -90,6 +90,25 @@ def over_caps(path, kb, schema):
     return over
 
 
+def transition_issues(path, kb, schema):
+    """The transition rules (required_at_status, active_max) judged against HEAD, so a page
+    that just became done without verify, or active over the cap, hears it at the edit."""
+    if not (schema.get("required_at_status") or schema.get("active_max")):
+        return []
+    rel = os.path.relpath(os.path.realpath(path), os.path.realpath(kb))
+    if not rel.startswith("initiatives/") or os.path.basename(rel) == "index.md":
+        return []
+    with open(path, encoding="utf-8") as fh:
+        fm = wikilib.fm_block(fh.read())
+    if wikilib.frontmatter_value(fm, "type") != "initiative" \
+            or wikilib.frontmatter_value(fm, "board") == "false":
+        return []
+    prev = wikilib.previous_frontmatter(kb, rel, renames=wikilib.renamed_from(kb))
+    n_active = wikilib.active_count(kb, extra={rel: fm}) if schema.get("active_max") else None
+    before = set(wikilib.initiative_issues(schema, fm, None, None))
+    return [i for i in wikilib.initiative_issues(schema, fm, prev, n_active) if i not in before]
+
+
 def main():
     kb = wikilib.resolve_root(sys.argv[2] if len(sys.argv) > 2 else None)
     schema = (wikilib.load_config(kb) or {}).get("initiative_schema")
@@ -98,14 +117,18 @@ def main():
     found = False
     for path in targets(kb):
         over = over_caps(path, kb, schema)
-        if not over:
+        moved = transition_issues(path, kb, schema) if os.path.isfile(path) else []
+        if not over and not moved:
             continue
         found = True
         rel = os.path.relpath(os.path.realpath(path), os.path.realpath(kb))
-        print(f"{rel}: frontmatter over the configured cap, which will hard-fail the commit.",
+        print(f"{rel}: frontmatter over the configured cap, which will hard-fail the commit."
+              if over else f"{rel}: frontmatter change the commit gate will refuse.",
               file=sys.stderr)
         for field, count, cap in over:
             print(f"  {field}: {count} words > {cap} cap", file=sys.stderr)
+        for field, msg in moved:
+            print(f"  {field}: {msg}", file=sys.stderr)
     if not found:
         return 0
     print("Shorten the field now, ideally with `wiki-fm set <page> <field>=<value>`, which"

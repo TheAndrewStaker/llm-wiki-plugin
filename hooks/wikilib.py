@@ -88,7 +88,31 @@ DEFAULTS = {
     "auto_push": False,
     "topology": "hub-and-spokes",
     "advisory_budgets": {},
+    # Stop-hook log guard: block a stop once when work events (commits, PRs) happened with no
+    # wiki log write since. Off unless `enabled` is true. Keys: work_commands, log_commands,
+    # log_dirs, work_writes (count file writes outside the wiki as work), min_work.
+    "log_guard": {},
+    # standing aims: {"file": "ROADMAP.md", "heading": "Standing aims"}; empty disables.
+    "aims": {},
 }
+
+LOG_GUARD_DEFAULTS = {
+    "enabled": False,
+    "work_commands": ["git commit", "gh pr create", "gh pr merge"],
+    "log_commands": ["wiki-fm set", "journal-append"],
+    "log_dirs": ["initiatives/", "journal/"],
+    "work_writes": False,
+    "ignore_write_prefixes": ["/tmp/", "/private/tmp/", "/var/folders/"],
+    "min_work": 1,
+}
+
+
+def log_guard_config(cfg):
+    out = dict(LOG_GUARD_DEFAULTS)
+    user = cfg.get("log_guard") or {}
+    if isinstance(user, dict):
+        out.update(user)
+    return out
 
 
 def resolve_root(argv_root=None):
@@ -143,6 +167,45 @@ def read(kb, rel):
         return ""
 
 
+def fm_block(text):
+    """The bare frontmatter block of a page, or "" when it has none."""
+    m = re.match(r"^---\n(.*?)\n---", text, re.S)
+    return m.group(1) if m else ""
+
+
+def git_text(kb, rel, ref="HEAD"):
+    """Content of `rel` at `ref` (ref "" reads the index), or "" when absent there."""
+    r = subprocess.run(["git", "show", f"{ref}:{rel}"], cwd=kb, capture_output=True, text=True)
+    return r.stdout if r.returncode == 0 else ""
+
+
+def renamed_from(kb, index=False):
+    """{new_path: old_path} for renames against HEAD, staged (index=True) or in the tree."""
+    args = ["git", "diff"] + (["--cached"] if index else []) + ["-M", "--name-status", "HEAD"]
+    r = subprocess.run(args, cwd=kb, capture_output=True, text=True)
+    out = {}
+    for line in r.stdout.splitlines():
+        parts = line.split("\t")
+        if len(parts) == 3 and parts[0].startswith("R"):
+            out[parts[2]] = parts[1]
+    return out
+
+
+def previous_frontmatter(kb, rel, index=False, renames=None):
+    """Frontmatter of `rel` as HEAD has it, following a staged rename; "" when the page is
+    new. Lets a gate judge a transition (what changed) rather than a state."""
+    old = (renames or {}).get(rel, rel)
+    return fm_block(git_text(kb, old))
+
+
+def state_dir(kb):
+    """Machine-local state beside the lint history: <git-dir>/compendium, else <wiki>/.compendium."""
+    r = subprocess.run(["git", "rev-parse", "--absolute-git-dir"], cwd=kb,
+                       capture_output=True, text=True)
+    gd = r.stdout.strip() if r.returncode == 0 else ""
+    return os.path.join(gd, "compendium") if gd else os.path.join(kb, ".compendium")
+
+
 def frontmatter_value(text, key):
     # [ \t]* not \s*: \s crosses the newline, so a key with a block list below it returns
     # that list's first item (marker attached), and an empty key returns the NEXT key's value.
@@ -176,10 +239,16 @@ def queue_owner(schema):
     return key, (schema or {}).get("owner_label", key.capitalize())
 
 
-def initiative_issues(schema, fm):
+def initiative_issues(schema, fm, prev_fm=None, active_count=None):
     """Per-page initiative schema violations as (field, message) pairs. `fm` is the bare
     frontmatter block. Shared by the commit gate and the frontmatter writer so the two
-    cannot disagree about what a page owes."""
+    cannot disagree about what a page owes.
+
+    Transition rules need `prev_fm`: the page's frontmatter before this change ("" for a
+    new page). None skips them. `required_at_status` ({"done": ["verify"]}) fails a page
+    that reaches the status without the field, or that already had it and drops it; a page
+    that was already in that status without the field is grandfathered. `active_max` fails
+    a page becoming `active` when `active_count` (this page included) exceeds the cap."""
     def wc(s):
         return len(s.split()) if s else 0
 
@@ -207,7 +276,104 @@ def initiative_issues(schema, fm):
         cap, val = schema.get(cap_key, 0), get(field)
         if cap and val and wc(val) > cap:
             out.append((field, f"{wc(val)}w > {cap}w cap"))
+    if prev_fm is None:
+        return out
+    prev_status = frontmatter_value(prev_fm, "assignment_status") if prev_fm else None
+    for at_status, fields in (schema.get("required_at_status") or {}).items():
+        if status != at_status:
+            continue
+        for field in fields:
+            if get(field):
+                continue
+            had = bool(prev_fm) and bool(frontmatter_value(prev_fm, field))
+            if prev_status != at_status:
+                out.append((field, f"required when assignment_status becomes '{at_status}'"))
+            elif had:
+                out.append((field, f"cannot be removed while assignment_status is '{at_status}'"))
+    cap = schema.get("active_max") or 0
+    if cap and active_count is not None and status == "active" and prev_status != "active" \
+            and active_count > cap:
+        out.append(("assignment_status",
+                    f"activating makes {active_count} active > {cap} cap "
+                    f"(active_max); park another initiative first"))
     return out
+
+
+def _board_initiative(fm):
+    return frontmatter_value(fm, "type") == "initiative" and frontmatter_value(fm, "board") != "false"
+
+
+def active_count(kb, index=False, extra=None):
+    """Board initiatives whose assignment_status is `active`, read from the index when
+    index=True. `extra` ({rel: fm}) supplies pages whose content is not on disk yet."""
+    extra = dict(extra or {})
+    n = 0
+    for f in git_files(kb):
+        if not f.startswith("initiatives/") or os.path.basename(f) == "index.md":
+            continue
+        fm = extra.pop(f, None)
+        if fm is None:
+            fm = fm_block(git_text(kb, f, "") if index else read(kb, f))
+        if _board_initiative(fm) and frontmatter_value(fm, "assignment_status") == "active":
+            n += 1
+    for f, fm in extra.items():
+        if f.startswith("initiatives/") and _board_initiative(fm) \
+                and frontmatter_value(fm, "assignment_status") == "active":
+            n += 1
+    return n
+
+
+AIM_LINE = re.compile(
+    r"^- (?P<id>aim:[a-z0-9][a-z0-9-]*) · (?P<date>\d{4}-\d{2}-\d{2}) · (?P<text>.+?) · "
+    r"carried by: (?P<carrier>none|\[[^\]]+\]\([^)\s]+\)) · reviewed: (?P<reviewed>\d{4}-\d{2}-\d{2})"
+    r"(?P<superseded> · superseded \d{4}-\d{2}-\d{2})?$")
+
+
+def parse_aims(kb, cfg, text=None):
+    """Standing aims from the configured section. Returns (aims, errors). Each aim:
+    id, date, text, carrier (wiki-relative path or None), reviewed, superseded (bool),
+    carrier_status (the carrier's assignment_status, or None). Errors are strings naming
+    the offending line; a duplicate live id is an error."""
+    conf = cfg.get("aims") or {}
+    if not conf.get("file") or not conf.get("heading"):
+        return [], []
+    rel = conf["file"]
+    text = read(kb, rel) if text is None else text
+    m = re.search(r"(?ms)^##\s+" + re.escape(conf["heading"]) + r"\s*$(.*?)(?=^## |\Z)", text)
+    if not m:
+        return [], [f"{rel}: section '## {conf['heading']}' not found"]
+    aims, errors, live = [], [], set()
+    import datetime
+    for line in m.group(1).splitlines():
+        if not line.startswith("- "):
+            continue
+        lm = AIM_LINE.match(line.rstrip())
+        if not lm:
+            errors.append(f"{rel}: aim line does not parse: {line[:70]!r}")
+            continue
+        try:
+            datetime.date.fromisoformat(lm.group("date"))
+            datetime.date.fromisoformat(lm.group("reviewed"))
+        except ValueError:
+            errors.append(f"{rel}: {lm.group('id')} has a bad date")
+            continue
+        carrier, carrier_status = None, None
+        if lm.group("carrier") != "none":
+            tgt = re.search(r"\(([^)\s]+)\)", lm.group("carrier")).group(1)
+            carrier = os.path.normpath(os.path.join(os.path.dirname(rel), tgt)).replace(os.sep, "/")
+            cfm = fm_block(read(kb, carrier))
+            if frontmatter_value(cfm, "type") != "initiative":
+                errors.append(f"{rel}: {lm.group('id')} carrier {carrier} is not an initiative page")
+            carrier_status = frontmatter_value(cfm, "assignment_status")
+        superseded = bool(lm.group("superseded"))
+        if not superseded:
+            if lm.group("id") in live:
+                errors.append(f"{rel}: {lm.group('id')} appears twice without 'superseded'")
+            live.add(lm.group("id"))
+        aims.append({"id": lm.group("id"), "date": lm.group("date"), "text": lm.group("text"),
+                     "carrier": carrier, "reviewed": lm.group("reviewed"),
+                     "superseded": superseded, "carrier_status": carrier_status})
+    return aims, errors
 
 
 def fm_list(fm_text, key):
@@ -325,15 +491,20 @@ def missed_mentions(kb, cfg, files):
             continue
         if f.endswith(".base"):
             continue
-        raw = read(kb, f)
-        plain = strip_markup(raw)
-        linked = linked_targets(f, raw)
-        seen = set()
-        for term, (disp, page) in index.items():
-            if f == page or page in seen or page in linked:
-                continue
-            # match on the display title: the index key is lowercased for dedup only
-            if not mention_re(disp).search(plain):
-                continue
-            seen.add(page)
-            yield f, disp, page, raw
+        yield from missed_mentions_text(index, f, read(kb, f))
+
+
+def missed_mentions_text(index, f, raw):
+    """missed_mentions for one page given its text, so a caller can judge another
+    version of the page (HEAD's) with the same index."""
+    plain = strip_markup(raw)
+    linked = linked_targets(f, raw)
+    seen = set()
+    for term, (disp, page) in index.items():
+        if f == page or page in seen or page in linked:
+            continue
+        # match on the display title: the index key is lowercased for dedup only
+        if not mention_re(disp).search(plain):
+            continue
+        seen.add(page)
+        yield f, disp, page, raw

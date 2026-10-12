@@ -247,6 +247,10 @@ def build(kb, repo=None):
                 " -- PASSED" + ("" if per and per.get("label") else ", re-set cycle_ends")
                 if ended else "")
     hdr += cycle_note
+    cap = (cfg.get("initiative_schema") or {}).get("active_max") or 0
+    if cap:
+        n_active = sum(1 for i in active if i["status"] == "active")
+        hdr += f" · active {n_active}/{cap}"
     hdr += " · priority is a rank you state, 1-9)"
     lines.append(hdr)
 

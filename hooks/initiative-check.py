@@ -44,6 +44,10 @@ if schema:
 
     owner, _ = wikilib.queue_owner(schema)
     owner_asks = 0
+    # Transition rules compare each page with HEAD (following a staged rename), so a page
+    # already in a state is grandfathered and only the change into it is judged.
+    renames = wikilib.renamed_from(KB, index=INDEX)
+    n_active = wikilib.active_count(KB, index=INDEX) if schema.get("active_max") else None
     for f in wikilib.git_files(KB):
         if not f.startswith("initiatives/") or os.path.basename(f) == "index.md":
             continue
@@ -56,7 +60,8 @@ if schema:
             continue
         if wikilib.frontmatter_value(fm, "board") == "false":
             continue
-        for field, msg in wikilib.initiative_issues(schema, fm):
+        prev = wikilib.previous_frontmatter(KB, f, renames=renames)
+        for field, msg in wikilib.initiative_issues(schema, fm, prev, n_active):
             issues.append(f"  INIT-FAIL {f} {field}: {msg}")
         if (wikilib.frontmatter_value(fm, "waiting_on") or "none") == owner:
             owner_asks += 1
@@ -78,6 +83,12 @@ if schema:
             if len(stripped.split()) > state_budget:
                 issues.append(f"  INIT-FAIL STATE.md hand-written: {len(stripped.split())}w > "
                                f"{state_budget}w cap")
+
+aims_conf = cfg.get("aims") or {}
+if aims_conf.get("file") and aims_conf.get("heading"):
+    _, aim_errors = wikilib.parse_aims(KB, cfg, text=src(aims_conf["file"]))
+    for err in aim_errors:
+        issues.append(f"  INIT-FAIL {err}")
 
 for line in issues:
     print(line)

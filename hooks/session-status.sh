@@ -96,6 +96,42 @@ print((datetime.date.today()-d).days)" "$rdate" 2>/dev/null)
   fi
 fi
 
+# 1b2. Standing aims (config `aims`): one line naming aims whose carrier is finished or
+#      parked, or whose reviewed: date is past reflect_nudge_days. Also sweeps log-guard
+#      session records older than 7 days. Both best-effort.
+if command -v python3 >/dev/null 2>&1; then
+  aims_warn=$(python3 - "$H" "$KB" <<'PY' 2>/dev/null
+import datetime, glob, os, sys, time
+sys.path.insert(0, sys.argv[1])
+import wikilib
+kb = sys.argv[2]
+cfg = wikilib.load_config(kb)
+try:
+    cutoff = time.time() - 7 * 86400
+    for p in glob.glob(os.path.join(wikilib.state_dir(kb), "sessions", "*.tsv")):
+        if os.path.getmtime(p) < cutoff:
+            os.remove(p)
+except OSError:
+    pass
+aims, errors = wikilib.parse_aims(kb, cfg)
+nudge = cfg.get("reflect_nudge_days") or 0
+today = datetime.date.today()
+out = []
+for a in aims:
+    if a["superseded"]:
+        continue
+    age = (today - datetime.date.fromisoformat(a["reviewed"])).days
+    if a["carrier_status"] in ("done", "parked"):
+        out.append(f"{a['id']} carrier is {a['carrier_status']}")
+    elif nudge and age > nudge:
+        out.append(f"{a['id']} unreviewed {age}d")
+if out:
+    print("standing aims: " + "; ".join(out[:4]) + (f"; +{len(out) - 4} more" if len(out) > 4 else ""))
+PY
+)
+  [ -n "$aims_warn" ] && warn="${warn:+$warn | }$aims_warn"
+fi
+
 # 1c. Lint-history delta: a one-line summary of which advisory counters changed between the
 # last two lint runs (disabled implicitly when fewer than 2 history lines exist).
 hist=$(git -C "$KB" rev-parse --absolute-git-dir 2>/dev/null || true)

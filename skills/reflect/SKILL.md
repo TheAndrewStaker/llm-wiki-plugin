@@ -39,6 +39,18 @@ fact at the same time) · `version-difference` (both were true, at different tim
 fact, different words) · `unresolved-uncertainty` (not enough evidence to call it either way) — plus a
 one-line reason for the call.
 
+### A2b. Standing aims (only when `wiki.config.json` has an `aims` block)
+The aims section (`aims.file`, under `## <aims.heading>`) holds the owner's long-horizon aims as
+append-only lines: `- aim:<slug> · <date stated> · <aim> · carried by: [title](initiatives/x.md) or
+none · reviewed: <date>`, with ` · superseded <date>` closing a line a newer one replaces. The
+deterministic half is already checked at commit (line grammar, dates, carrier is an initiative page)
+and at session start (carrier done or parked, review overdue). The judgment half is this step: give
+the same subagent the aims section plus the generated board (`STATE.md`), not every initiative page,
+and ask for one `aim-review` finding per live aim with exactly one verdict: `still-true` ·
+`changed` (propose the replacement line) · `carrier-missing` (an initiative on the board plainly
+advances the aim; name it) · `carrier-finished` (the carrier is done or parked; name the successor or
+`none`). Aims are never inferred or added by the subagent; only the owner states an aim.
+
 ### A3. Write the reflection log (the reversible artifact)
 Write to `analyses/reflection-YYYY-MM-DD.md` (do NOT touch target pages). Frontmatter `type: analysis`,
 `title`, `timestamp`, `synthesized_from:` = the scope list. Body: one **checkbox per proposed change**,
@@ -60,8 +72,12 @@ When the user says apply:
    if the old version matters, move it to `archive/` with a status token + a relative-md pointer to the
    successor). `missing-page` → create it (OKF frontmatter + `synthesized_from:`) and link it. Set the
    edited page's **`reviewed:`** to today (records the re-verification; do not silently bump `timestamp`).
-3. Mark each applied item `- [x] APPLIED`.
-4. Run the lint (green) + `stale-source.py` (touched pages should clear), then commit ("Apply confirmed
+3. For an `aim-review` item: `still-true` updates that line's `reviewed:` date in place (the only
+   in-place edit; the statement itself never changes); `changed` appends the proposed line under
+   the same `aim:` id and marks the old line ` · superseded <today>`; `carrier-missing` and
+   `carrier-finished` rewrite only the `carried by:` link and the `reviewed:` date.
+4. Mark each applied item `- [x] APPLIED`.
+5. Run the lint (green) + `stale-source.py` (touched pages should clear), then commit ("Apply confirmed
    reflection edits YYYY-MM-DD").
 
 ## Principles
