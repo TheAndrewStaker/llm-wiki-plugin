@@ -1,11 +1,22 @@
 #!/usr/bin/env python3
-"""Export and validate conservative OKF v0.1 interchange bundles.
+"""Export and validate conservative OKF v0.2 interchange bundles.
 
 The working wiki contains private operational material (sources, agent instructions,
 configuration, and hooks).  An OKF bundle is a deliberately smaller interchange
 surface containing only Markdown concept pages and reserved index.md files.
+
+Export synthesizes the v0.2 trust families from what pages already carry and appends
+them to each page's frontmatter block without re-serializing the author's YAML:
+`generated {by, at}` from `timestamp` when `okf.generated_by` is configured, `verified`
+from `reviewed` when `okf.verifier` is configured, `sources` from `synthesized_from`
+(URLs, and paths that exist in the bundle), `status: deprecated` from the supersede
+marker. Every timestamp-valued key becomes an ISO 8601 datetime with an explicit
+offset: a date-only value is taken as noon UTC, which keeps its calendar date in every
+offset; a naive datetime is taken as UTC. Legacy keys stay, so v0.1 consumers still read
+the bundle.
 """
 import argparse
+import datetime
 import json
 import os
 from pathlib import Path
@@ -14,31 +25,90 @@ import shutil
 import subprocess
 import sys
 
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(HERE), "hooks"))
+import wikilib  # noqa: E402
+
+OKF_VERSION = "0.2"
 FRONTMATTER = re.compile(r"\A---\n(.*?)\n---(?:\n|\Z)", re.S)
 TYPE = re.compile(r"(?m)^type:[ \t]*([^\s#][^\n]*)$")
+STATUS_VALUES = ("draft", "stable", "deprecated")
+DATE_ONLY = re.compile(r"\d{4}-\d{2}-\d{2}")
+NAIVE = re.compile(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?")
+INSTANT = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})")
+TIMESTAMP_KEYS = ("timestamp", "stale_after")
 
 
 def strip_frontmatter(text):
     return FRONTMATTER.sub("", text, count=1)
 
 
-def yaml_parseable(text):
+def iso_instant(value):
+    """An ISO 8601 datetime with an explicit offset, or None when the value is not a date."""
+    v = str(value).strip().strip("'\"")
+    if INSTANT.fullmatch(v):
+        return v
+    if NAIVE.fullmatch(v):
+        return v.replace(" ", "T") + "+00:00"
+    if DATE_ONLY.fullmatch(v):
+        return v + "T12:00:00+00:00"
+    return None
+
+
+def load_yaml(text):
+    """("ok", mapping) | ("invalid", None) | ("unavailable", None). Ruby can only judge
+    parseability, so it yields ("ok", None): structure checks run, field checks do not."""
     try:
         import yaml
     except ImportError:
         ruby = shutil.which("ruby")
         if not ruby:
-            return None
-        # Mirror the PyYAML branch: parseable AND a mapping at the root.
+            return "unavailable", None
         check = "node = YAML.parse(STDIN.read); exit(node && node.root.is_a?(Psych::Nodes::Mapping) ? 0 : 1)"
-        return subprocess.run(
-            [ruby, "-ryaml", "-e", check],
-            input=text, text=True, capture_output=True,
-        ).returncode == 0
+        ok = subprocess.run([ruby, "-ryaml", "-e", check], input=text, text=True,
+                            capture_output=True).returncode == 0
+        return ("ok", None) if ok else ("invalid", None)
     try:
-        return isinstance(yaml.safe_load(text), dict)
+        data = yaml.safe_load(text)
     except yaml.YAMLError:
+        return "invalid", None
+    return ("ok", data) if isinstance(data, dict) else ("invalid", None)
+
+
+def is_instant(value):
+    if isinstance(value, datetime.datetime):
+        return value.tzinfo is not None
+    if isinstance(value, datetime.date):
         return False
+    return isinstance(value, str) and bool(INSTANT.fullmatch(value.strip()))
+
+
+def actor_entry(value):
+    return isinstance(value, dict) and bool(value.get("by")) and is_instant(value.get("at"))
+
+
+def field_errors(rel, data):
+    errors = []
+    status = data.get("status")
+    if status is not None and status not in STATUS_VALUES:
+        errors.append(f"INVALID_STATUS {rel} ({status!r} not in {'|'.join(STATUS_VALUES)})")
+    if str(data.get("type", "")).strip() == "Attested Computation" and "runtime" not in data:
+        errors.append(f"MISSING_RUNTIME {rel}")
+    for key in TIMESTAMP_KEYS:
+        if key in data and not is_instant(data[key]):
+            errors.append(f"INVALID_TIMESTAMP {rel} {key} (ISO 8601 datetime with an explicit offset)")
+    if "generated" in data and not actor_entry(data["generated"]):
+        errors.append(f"INVALID_GENERATED {rel} (needs by and an offset-bearing at)")
+    if "verified" in data:
+        entries = data["verified"] if isinstance(data["verified"], list) else [data["verified"]]
+        if not all(actor_entry(e) for e in entries):
+            errors.append(f"INVALID_VERIFIED {rel} (each entry needs by and an offset-bearing at)")
+    if "sources" in data:
+        entries = data["sources"]
+        if not isinstance(entries, list) or not all(
+                isinstance(e, dict) and e.get("id") and e.get("resource") for e in entries):
+            errors.append(f"INVALID_SOURCES {rel} (a list of entries with id and resource)")
+    return errors
 
 
 def validate(root):
@@ -60,16 +130,16 @@ def validate(root):
         fm = FRONTMATTER.match(text)
         if path.name == "index.md":
             root_version = path == root / "index.md" and fm and re.search(
-                r'(?m)^okf_version:\s*["\']?0\.1["\']?\s*$', fm.group(1)
+                r'(?m)^okf_version:\s*["\']?\d+\.\d+["\']?\s*$', fm.group(1)
             )
             if fm and not root_version:
                 errors.append(f"RESERVED_FRONTMATTER {rel}")
             if fm and root_version:
-                parsed = yaml_parseable(fm.group(1))
-                if parsed is None:
+                state, _ = load_yaml(fm.group(1))
+                if state == "unavailable":
                     errors.append("YAML_PARSER_UNAVAILABLE install PyYAML or Ruby")
                     break
-                if not parsed:
+                if state == "invalid":
                     errors.append(f"INVALID_YAML {rel}")
             body = strip_frontmatter(text)
             if not re.search(r"(?m)^#\s+\S", body):
@@ -83,17 +153,90 @@ def validate(root):
         elif not fm:
             errors.append(f"MISSING_FRONTMATTER {rel}")
         else:
-            parsed = yaml_parseable(fm.group(1))
-            if parsed is None:
+            state, data = load_yaml(fm.group(1))
+            if state == "unavailable":
                 errors.append("YAML_PARSER_UNAVAILABLE install PyYAML or Ruby")
                 break
-            if not parsed:
+            if state == "invalid":
                 errors.append(f"INVALID_YAML {rel}")
             elif not TYPE.search(fm.group(1)):
                 errors.append(f"MISSING_TYPE {rel}")
+            elif data is not None:
+                errors.extend(field_errors(rel, data))
     if not (root / "index.md").is_file():
         errors.append("MISSING_ROOT_INDEX index.md")
     return errors
+
+
+def source_entries(fm):
+    """synthesized_from values: flow list, block list, scalar, or a folded (>-) scalar whose
+    comma-separated items span several lines."""
+    m = re.search(r"(?m)^synthesized_from:[ \t]*(.*)$", fm)
+    if not m:
+        return []
+    head = m.group(1).strip()
+    if head in (">-", ">", "|", "|-"):
+        body = []
+        for line in fm[m.end():].lstrip("\n").split("\n"):
+            if not line.startswith((" ", "\t")):
+                break
+            body.append(line.strip())
+        return [s.strip() for s in " ".join(body).split(",") if s.strip()]
+    return wikilib.fm_list(fm, "synthesized_from")
+
+
+def slug(entry):
+    base = re.sub(r"^https?://", "", entry)
+    base = re.sub(r"\.[A-Za-z0-9]{1,5}$", "", base) if "/" not in base.rstrip("/") else base
+    out = re.sub(r"[^a-z0-9]+", "-", base.lower()).strip("-")
+    return out[:60] or "source"
+
+
+def enrich(text, rel, config, exported):
+    """Append the v0.2 families to a page's frontmatter; keys the author already set win."""
+    m = FRONTMATTER.match(text)
+    if not m:
+        return text
+    fm = m.group(1)
+    okf = config.get("okf") or {}
+    have = lambda key: re.search(r"(?m)^" + re.escape(key) + r":", fm) is not None
+    extra = []
+    for key in TIMESTAMP_KEYS:
+        km = re.search(r"(?m)^" + key + r":[ \t]*(.+)$", fm)
+        if km:
+            at = iso_instant(km.group(1))
+            if at and at != km.group(1).strip().strip("'\""):
+                fm = fm[:km.start()] + f"{key}: {at}" + fm[km.end():]
+    ts = wikilib.frontmatter_value(fm, "timestamp")
+    at = iso_instant(ts) if ts else None
+    if okf.get("generated_by") and at and not have("generated"):
+        extra.append(f"generated:\n  by: {okf['generated_by']}\n  at: {at}")
+    reviewed = wikilib.frontmatter_value(fm, "reviewed")
+    seen = iso_instant(reviewed) if reviewed else None
+    if okf.get("verifier") and seen and not have("verified"):
+        extra.append(f"verified:\n  - by: {okf['verifier']}\n    at: {seen}")
+    if not have("sources"):
+        entries, ids = [], set()
+        for raw in source_entries(fm):
+            if re.match(r"^https?://", raw):
+                resource = raw
+            else:
+                p = os.path.normpath(os.path.join(os.path.dirname(rel), raw)).replace(os.sep, "/")
+                if p not in exported:
+                    continue
+                resource = "/" + p
+            sid, n = slug(raw), 2
+            while sid in ids:
+                sid, n = f"{slug(raw)}-{n}", n + 1
+            ids.add(sid)
+            entries.append(f"  - id: {sid}\n    resource: {json.dumps(resource)}")
+        if entries:
+            extra.append("sources:\n" + "\n".join(entries))
+    if not have("status") and wikilib.supersede_marker(text):
+        extra.append("status: deprecated")
+    if extra:
+        fm = fm + "\n" + "\n".join(extra)
+    return "---\n" + fm + "\n---" + text[m.end() - (1 if text[m.end() - 1:m.end()] == "\n" else 0):]
 
 
 def export(source, destination, force=False):
@@ -121,7 +264,7 @@ def export(source, destination, force=False):
     if (source / "archive").is_dir() and "archive/" not in content_dirs:
         content_dirs.append("archive/")
 
-    copied = 0
+    pages = []
     for dirname in content_dirs:
         base = (source / dirname).resolve()
         if source not in base.parents or not base.is_dir():
@@ -129,11 +272,16 @@ def export(source, destination, force=False):
         for src in sorted(base.rglob("*.md")):
             if src.name in ("index.md", "log.md"):
                 continue
-            rel = src.relative_to(source)
-            dst = destination / rel
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            dst.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
-            copied += 1
+            pages.append(src)
+    exported = {p.relative_to(source).as_posix() for p in pages}
+
+    copied = 0
+    for src in pages:
+        rel = src.relative_to(source).as_posix()
+        dst = destination / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_text(enrich(src.read_text(encoding="utf-8"), rel, config, exported), encoding="utf-8")
+        copied += 1
 
     # Generate canonical navigation indexes rather than leaking working-tree prose or
     # carrying forward index stubs that do not satisfy OKF's section/list structure.
@@ -156,7 +304,7 @@ def export(source, destination, force=False):
         heading = "Contents" if directory == destination else directory.name
         # Declare the targeted spec version at the bundle root (the one index
         # permitted to carry frontmatter).
-        preamble = '---\nokf_version: "0.1"\n---\n\n' if directory == destination else ""
+        preamble = f'---\nokf_version: "{OKF_VERSION}"\n---\n\n' if directory == destination else ""
         (directory / "index.md").write_text(
             preamble + f"# {heading}\n\n" + ("\n".join(entries) + "\n" if entries else ""),
             encoding="utf-8",

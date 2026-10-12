@@ -34,14 +34,14 @@ remain testable without publishing.
 This implements three published conventions and adopts their shared vocabulary:
 
 - **Karpathy, "LLM Wiki"** — the pattern: three layers (raw sources / the wiki / the schema), three operations (Ingest / Query / Lint), an index + a log, and *compounding* knowledge rather than query-time RAG.
-- **Google Cloud, Open Knowledge Format (OKF) v0.1** — the on-disk format: markdown + YAML frontmatter, one required field `type:`, concept-id = file path, a markdown-link graph.
+- **Google Cloud, Open Knowledge Format (OKF) v0.2** — the on-disk format: markdown + YAML frontmatter, one required field `type:`, concept-id = file path, a markdown-link graph, plus the v0.2 trust families (`generated`, `verified`, `sources`, `status`, `stale_after`).
 - **Anthropic context engineering** — filesystem-as-substrate, agentic search before semantic retrieval, human-authored schema vs. agent-authored content, progressive disclosure, subagents for context isolation.
 
 ### OKF compatibility
 
-The private working tree is **OKF-aligned, not itself an interchange bundle**: it also contains raw sources, agent instructions, configuration, hooks, and git history. Run `bin/wiki-okf export <wiki-root> <empty-destination>` to produce the public, Markdown-only boundary, then `bin/wiki-okf validate <destination>` to check its structure. The exporter excludes operational/private material along with working-tree `index.md`/`log.md` files, and generates canonical navigation indexes instead; the bundle-root index declares `okf_version: "0.1"`.
+The private working tree is **OKF-aligned, not itself an interchange bundle**: it also contains raw sources, agent instructions, configuration, hooks, and git history. Run `bin/wiki-okf export <wiki-root> <empty-destination>` to produce the public, Markdown-only boundary, then `bin/wiki-okf validate <destination>` to check its structure. The exporter excludes operational/private material along with working-tree `index.md`/`log.md` files, and generates canonical navigation indexes instead; the bundle-root index declares `okf_version: "0.2"`.
 
-Concept pages map directly to OKF v0.1: Markdown + YAML frontmatter with `type:` as the only required field; `title` / `description` / `tags` / `timestamp` carry OKF's recommended semantics; file paths identify concepts; relative Markdown links form the graph. `resource:` keeps its OKF meaning (the asset a concept describes) and is distinct from plugin extensions such as `synthesized_from:`, `reviewed:`, and `aliases:`. Validation is conservative and fail-closed: it uses PyYAML when installed or Ruby's YAML parser otherwise, and refuses to certify a bundle when neither parser is available.
+Concept pages map directly to OKF v0.2: Markdown + YAML frontmatter with `type:` as the only required field; `title` / `description` / `tags` / `timestamp` carry OKF's recommended semantics; file paths identify concepts; relative Markdown links form the graph. `resource:` keeps its OKF meaning (the asset a concept describes) and is distinct from plugin extensions such as `synthesized_from:`, `reviewed:`, and `aliases:`. The export synthesizes the v0.2 trust families from what pages already carry, appended to each page's frontmatter without rewriting the author's YAML: `generated {by, at}` from `timestamp` when `okf.generated_by` names the producer (`<producer>/<version>`), `verified` from `reviewed` when `okf.verifier` names the human (`human:<id>`), `sources` from `synthesized_from` (URLs, and pages that exist in the bundle), `status: deprecated` from the supersede marker; every timestamp-valued key becomes an ISO 8601 datetime with an explicit offset (a date-only value is taken as noon UTC, so it keeps its calendar date in every zone). The legacy keys stay, so a v0.1 consumer still reads the bundle. Validation is conservative and fail-closed: it uses PyYAML when installed or Ruby's YAML parser otherwise, refuses to certify a bundle when neither parser is available, and with PyYAML also rejects a `status` outside `draft|stable|deprecated`, a timestamp without an offset, malformed `generated`/`verified`/`sources` entries, and an `Attested Computation` without `runtime`.
 
 ## What it does (the lifecycle)
 
@@ -76,7 +76,7 @@ Concept pages map directly to OKF v0.1: Markdown + YAML frontmatter with `type:`
 Three seams, each matched to its consumer:
 
 - **Per-machine (paths):** the plugin's `userConfig.WIKI_ROOT` (defaults to `~/wiki`); scripts also honor `$WIKI_ROOT` and an explicit argv path.
-- **Per-user, content-coupled:** `wiki.config.json` at the wiki root (content dirs, orphan exemptions, missed-link stoplist, thresholds) — versioned with the content.
+- **Per-user, content-coupled:** `wiki.config.json` at the wiki root (content dirs, orphan exemptions, missed-link stoplist, thresholds, `advisory_budgets` including the per-commit `missed_links_added`, `initiative_schema` with its transition rules `required_at_status` and `active_max`, the `log_guard` block, the `aims` section pointer, and `okf` export identities) — versioned with the content.
 - **Per-org:** drop-in extension dirs (`status.d/*.sh` for session-start context injection); nothing host-specific in core.
 
 ## One wiki or many? (topology)
