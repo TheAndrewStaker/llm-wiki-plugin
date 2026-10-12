@@ -848,6 +848,13 @@ printf '%s\n' '---' 'okf_version: "0.1"' '---' '' '# Contents' > "$OKF_OUT/index
 python3 "$ROOT/bin/wiki-okf" validate "$OKF_OUT" >/dev/null; rc=$?
 assert "a 0.1 root index still validates" "0" "$rc"
 printf '%s\n' '---' 'okf_version: "0.2"' '---' '' '# Contents' > "$OKF_OUT/index.md"
+printf '%s\n' '---' 'type: concept' 'title: Proposal' 'status: proposal' 'timestamp: 2026-01-02  # stated' '---' 'x' > "$OKF_WIKI/concepts/prop.md"
+python3 "$ROOT/bin/wiki-okf" export "$OKF_WIKI" "$OKF_OUT" --force >/dev/null 2>&1; rc=$?
+assert "a page with an author status outside the enum still exports" "0" "$rc"
+prop=$(cat "$OKF_OUT/concepts/prop.md")
+assert_contains "the author status is kept under wiki_status" "wiki_status: proposal" "$prop"
+assert "and no OKF status is claimed" "0" "$(printf '%s' "$prop" | grep -c '^status:')"
+assert_contains "a trailing comment does not stop normalization" "timestamp: 2026-01-02T12:00:00+00:00" "$prop"
 printf '%s\n' '---' 'type: [broken' '---' 'invalid YAML' > "$OKF_OUT/concepts/invalid.md"
 okf_invalid=$(python3 "$ROOT/bin/wiki-okf" validate "$OKF_OUT" 2>&1); rc=$?
 assert "OKF validator rejects unparseable YAML" "1" "$rc"
@@ -2290,6 +2297,8 @@ assert_contains "and says why" "cannot be removed while assignment_status is 'do
 mk b done
 out=$(python3 "$H/initiative-check.py" "$TW")
 assert_contains "the gate catches a done page that lost its verify" "cannot be removed while assignment_status is 'done'" "$out"
+mk b done "~"
+assert_contains "a YAML null verify counts as removed" "cannot be removed" "$(python3 "$H/initiative-check.py" "$TW")"
 git -C "$TW" checkout -q -- initiatives/b.md
 mk c planning; git -C "$TW" add -A && git -C "$TW" commit -qm c >/dev/null 2>&1
 mk c active
@@ -2306,6 +2315,11 @@ out=$($FM set "$TW/initiatives/b.md" assignment_status=active 2>&1); rc=$?
 assert "wiki-fm refuses a second activation" "1" "$rc"
 assert_contains "with the count" "activating makes 2 active > 1 cap" "$out"
 assert_contains "the board header shows the active count" "active 1/1" "$(python3 "$H/board.py" "$TW" 2>&1)"
+printf -- '---\ntype: initiative\ntitle: d\ntimestamp: 2026-01-01\nassignment_kind: self\nassignment_status: active\nnext: ship it\nwaiting_on: none\nboard: false\n---\nbody\n' > "$TW/initiatives/d.md"
+git -C "$TW" add -A && git -C "$TW" commit -qm offboard >/dev/null 2>&1
+mk d active
+assert_contains "joining the board already active counts as an activation" "INIT-FAIL initiatives/d.md assignment_status: activating makes 2 active > 1 cap" "$(python3 "$H/initiative-check.py" "$TW")"
+git -C "$TW" checkout -q -- initiatives/d.md
 git -C "$TW" mv initiatives/old-done.md initiatives/renamed-done.md
 assert "a renamed grandfathered page still passes in index mode" "INIT-FAIL=0" "$(WIKI_CHECK_INDEX=1 python3 "$H/initiative-check.py" "$TW" | tail -1)"
 rm -rf "$(dirname "$TW")"
@@ -2331,7 +2345,7 @@ git -C "$AW" add -A && git -C "$AW" commit -qm init >/dev/null 2>&1
 assert "well-formed aims pass" "INIT-FAIL=0" "$(python3 "$H/initiative-check.py" "$AW" | tail -1)"
 aims_file "$L1
 - aim:bad · 2026-01-01 · no carrier field"
-assert_contains "a malformed aim line fails the gate" "INIT-FAIL ROADMAP.md: aim line does not parse" "$(python3 "$H/initiative-check.py" "$AW")"
+assert_contains "a malformed aim line fails the gate" "INIT-FAIL ROADMAP.md aims: line does not parse" "$(python3 "$H/initiative-check.py" "$AW")"
 aims_file "$L1
 - aim:ghost · 2026-01-01 · points nowhere · carried by: [Nope](analyses/nope.md) · reviewed: 2026-01-01"
 assert_contains "a carrier that is not an initiative page fails" "aim:ghost carrier analyses/nope.md is not an initiative page" "$(python3 "$H/initiative-check.py" "$AW")"
@@ -2436,7 +2450,70 @@ printf -- '---\ntype: notes\ntitle: N\n---\nThe [Alpha Widget](../entities/alpha
 printf '{"hook_event_name":"Stop","stop_hook_active":false,"transcript_path":"%s"}' "$TRW" | WIKI_ROOT="$DW" bash "$H/auto-commit.sh" >/dev/null 2>&1; rc=$?
 assert "linked, the page commits" "0" "$rc"
 assert "and the tree is clean" "" "$(git -C "$DW" status --short)"
+printf -- '---\ntype: notes\ntitle: Old\n---\nThe Alpha Widget again [k](../KNOWLEDGE.md)\n' > "$DW/notes/old.md"
+git -C "$DW" add -A && git -C "$DW" -c core.hooksPath=/dev/null commit -qm old >/dev/null 2>&1
+git -C "$DW" mv notes/old.md notes/renamed.md
+assert_contains "a staged rename keeps its old mentions" "MISSED_LINKS_ADDED=0" "$(WIKI_CHECK_INDEX=1 python3 "$H/missed-links.py" --delta "$DW")"
 rm -rf "$(dirname "$DW")"
+
+echo "--- commit gate reads the index: another session's dirty page cannot fail this commit ---"
+IX="$(mktemp -d)/wiki"
+mkdir -p "$IX"/{notes,initiatives,hooks}
+cp "$H"/* "$IX/hooks/" 2>/dev/null
+chmod +x "$IX"/hooks/*.sh "$IX"/hooks/*.py "$IX/hooks/pre-commit" 2>/dev/null
+printf '{"auto_commit": true, "advisory_budgets": {"deadend": 0}}\n' > "$IX/wiki.config.json"
+printf -- '---\ntype: index\ntitle: K\n---\n[x](notes/x.md) [b](initiatives/b.md)\n' > "$IX/KNOWLEDGE.md"
+printf -- '---\ntype: notes\ntitle: X\n---\nlinks [k](../KNOWLEDGE.md)\n' > "$IX/notes/x.md"
+printf -- '---\ntype: initiative\ntitle: B\ntimestamp: 2026-01-01\n---\nbody [k](../KNOWLEDGE.md)\n' > "$IX/initiatives/b.md"
+printf '/.auto-commit-failed\n' > "$IX/.gitignore"
+git -C "$IX" init -q; git -C "$IX" config user.name t; git -C "$IX" config user.email t@t
+git -C "$IX" config core.hooksPath hooks
+git -C "$IX" add -A && git -C "$IX" commit -qm init >/dev/null 2>&1
+printf -- '---\ntype: notes\ntitle: X\n---\nno links now\n' > "$IX/notes/x.md"
+bash "$H/lint.sh" "$IX" >/dev/null 2>&1; rc=$?
+assert "the working tree fails the deadend budget" "1" "$rc"
+WIKI_CHECK_INDEX=1 bash "$H/lint.sh" "$IX" >/dev/null 2>&1; rc=$?
+assert "the index, still at HEAD, passes the same budget" "0" "$rc"
+printf 'more\n' >> "$IX/initiatives/b.md"
+out=$(printf '{"hook_event_name":"Stop","stop_hook_active":false}' | WIKI_ROOT="$IX" bash "$H/auto-commit.sh" 2>&1); rc=$?
+assert "a bystander's stop commits" "0" "$rc"
+assert "with its own page" "initiatives/b.md" "$(git -C "$IX" show --name-only --format= HEAD | grep b.md)"
+assert "and holds the other session's dead-end page back" " M notes/x.md" "$(git -C "$IX" status --short notes/x.md)"
+assert_contains "the breadcrumb names the held page, not a failed commit" "held back" "$(cat "$IX/.auto-commit-failed")"
+rm -rf "$(dirname "$IX")"
+
+echo "--- session-record: tokenized work and log detection ---"
+SR="$(mktemp -d)/wiki"
+mkdir -p "$SR"/{initiatives,journal,hooks}
+printf '{"log_guard": {"enabled": true, "work_commands": ["git commit", "gh pr create", "jaspr submit"]}}\n' > "$SR/wiki.config.json"
+git -C "$SR" init -q
+REC="python3 $H/session-record.py $SR"
+OUTS="$(mktemp -d)"
+ev() { cut -f2 "$SR/.git/compendium/sessions/$1.tsv" 2>/dev/null | tr '\n' ' '; }
+rec() { python3 -c 'import json,sys; print(json.dumps({"session_id": sys.argv[1], "tool_name": "Bash", "cwd": sys.argv[2], "tool_input": {"command": sys.argv[3]}, "tool_response": {"stdout": sys.argv[4], "stderr": sys.argv[5]}}))' "$@" | $REC; }
+rec g1 "$OUTS" 'grep -rn "git commit" docs/' '' ''
+assert "a grep for the words is not work" "" "$(ev g1)"
+rec g2 "$SR" "git -C $OUTS commit -m x" '' ''
+assert "git -C outside the wiki, run from the wiki, is work" "work " "$(ev g2)"
+rec g3 "$OUTS" "cd $SR && git commit -m y" '' ''
+assert "a cd into the wiki before the commit is not work" "" "$(ev g3)"
+rec g4 "$OUTS" "git commit -m z" 'nothing to commit, working tree clean' ''
+assert "a commit with nothing to commit is not work" "" "$(ev g4)"
+rec g5 "$OUTS" "jaspr submit" '' ''
+assert "a configured tool is work" "work " "$(ev g5)"
+rec g6 "$OUTS" "/usr/bin/git -c core.hooksPath=/dev/null commit -m w" '' ''
+assert "a path to git with a -c flag is work" "work " "$(ev g6)"
+rec l1 "$SR" "cat hooks/journal-append.sh" '' ''
+assert "reading the journal script is not a log" "" "$(ev l1)"
+rec l2 "$SR" "bash hooks/journal-append.sh \"10:00 · x · y\"" '' ''
+assert "running it is a log" "log " "$(ev l2)"
+rec l3 "$SR" "wiki-fm set initiatives/nope.md next=x" '' 'wiki-fm: page has no frontmatter block'
+assert "a failed wiki-fm is not a log" "" "$(ev l3)"
+rec l4 "$SR" "wiki-fm set initiatives/a.md next=x" 'set initiatives/a.md: next (1w)' ''
+assert "a successful wiki-fm is a log" "log " "$(ev l4)"
+printf '{"session_id":"l5","tool_name":"Edit","tool_input":{"file_path":"%s/initiatives/index.md"}}' "$SR" | $REC
+assert "an index edit is not a log" "" "$(ev l5)"
+rm -rf "$(dirname "$SR")" "$OUTS"
 
 echo
 echo "======================================"

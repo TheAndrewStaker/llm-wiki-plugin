@@ -35,7 +35,14 @@ This project follows Keep a Changelog and intends to use Semantic Versioning aft
   offset-bearing timestamps from what pages already carry (config `okf.generated_by`,
   `okf.verifier`), stamps `okf_version: "0.2"`, and the validator accepts any `X.Y` version, rejects
   a `status` outside the spec enum, a timestamp without an offset, and an `Attested Computation`
-  without `runtime`.
+  without `runtime`. An author's own `status` outside the enum is exported as `wiki_status`.
+- The commit gate reads the index being committed (`WIKI_CHECK_INDEX=1`): `wikilib.read` serves
+  tracked pages from a one-shot `git cat-file --batch` of the index, so lint-core and graph-check
+  judge what the commit contains and another session's uncommitted page can no longer fail it.
+- The log-guard recorder tokenizes each shell segment: a commit string inside a grep is not work,
+  `git -C <dir> commit` is judged by `<dir>`, a `cd` earlier in the command moves later segments,
+  "nothing to commit" and interrupted calls are not work, a log command whose output carries its
+  own error prefix is not a log, and an edit to an index page is not a log.
 
 - Optional initiative `verify` field: how to tell `next` is done. Capped by `verify_max_words`
   like `next`, checked by the commit gate and `wiki-fm`, and shown on the board row after `next`.

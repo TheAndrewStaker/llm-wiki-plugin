@@ -45,7 +45,7 @@ def strip_frontmatter(text):
 
 def iso_instant(value):
     """An ISO 8601 datetime with an explicit offset, or None when the value is not a date."""
-    v = str(value).strip().strip("'\"")
+    v = re.sub(r"\s+#.*$", "", str(value).strip()).strip("'\"")
     if INSTANT.fullmatch(v):
         return v
     if NAIVE.fullmatch(v):
@@ -199,6 +199,10 @@ def enrich(text, rel, config, exported):
         return text
     fm = m.group(1)
     okf = config.get("okf") or {}
+    # An author's own `status` outside the spec enum is a wiki field, not an OKF one.
+    sm = re.search(r"(?m)^status:[ \t]*(.*)$", fm)
+    if sm and sm.group(1).strip().strip("'\"") not in STATUS_VALUES:
+        fm = fm[:sm.start()] + "wiki_status:" + fm[sm.start() + len("status:"):]
     have = lambda key: re.search(r"(?m)^" + re.escape(key) + r":", fm) is not None
     extra = []
     for key in TIMESTAMP_KEYS:

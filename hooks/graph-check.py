@@ -33,7 +33,7 @@ wiki = re.compile(r"\[\[([^\]|#]+)")
 fence = re.compile(r"^\s*(```|~~~)")
 for f in files:
     try:
-        txt = open(f, encoding="utf-8", errors="replace").read()
+        txt = wikilib.read(KB, f)
     except OSError:
         continue
     d = os.path.dirname(f)

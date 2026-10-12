@@ -160,7 +160,53 @@ def corpus_files(kb, cfg=None, pattern="*.md"):
             if not (skip and f.startswith(skip)) and not is_memory(f)]
 
 
+_INDEX_TEXTS = None
+
+
+def index_texts(kb):
+    """{rel: text} for every tracked .md blob in the index (GIT_INDEX_FILE honoured), read
+    in one cat-file batch. Cached per process."""
+    global _INDEX_TEXTS
+    if _INDEX_TEXTS is not None and _INDEX_TEXTS[0] == kb:
+        return _INDEX_TEXTS[1]
+    ls = subprocess.run(["git", "ls-files", "-s", "--", "*.md"], cwd=kb,
+                        capture_output=True, text=True).stdout
+    shas = {}
+    for line in ls.splitlines():
+        meta, _, path = line.partition("\t")
+        parts = meta.split()
+        if len(parts) >= 2 and path:
+            shas[path] = parts[1]
+    texts = {}
+    if shas:
+        out = subprocess.run(["git", "cat-file", "--batch"], cwd=kb,
+                             input=("\n".join(shas.values()) + "\n").encode(),
+                             capture_output=True).stdout
+        by_sha, pos = {}, 0
+        while pos < len(out):
+            nl = out.find(b"\n", pos)
+            if nl < 0:
+                break
+            header = out[pos:nl].decode("utf-8", "replace").split()
+            if len(header) < 3 or header[1] != "blob":
+                pos = nl + 1
+                continue
+            size = int(header[2])
+            by_sha[header[0]] = out[nl + 1:nl + 1 + size].decode("utf-8", "replace")
+            pos = nl + 1 + size + 1
+        texts = {p: by_sha[s] for p, s in shas.items() if s in by_sha}
+    _INDEX_TEXTS = (kb, texts)
+    return texts
+
+
 def read(kb, rel):
+    """A page's text. With WIKI_CHECK_INDEX=1 (the commit gate) a tracked page is read from
+    the index being committed, so another session's uncommitted edits never decide this
+    commit's verdict; anything not in the index falls back to the working tree."""
+    if os.environ.get("WIKI_CHECK_INDEX") == "1":
+        texts = index_texts(kb)
+        if rel in texts:
+            return texts[rel]
     try:
         return open(os.path.join(kb, rel), encoding="utf-8", errors="replace").read()
     except OSError:
@@ -193,9 +239,20 @@ def renamed_from(kb, index=False):
 
 def previous_frontmatter(kb, rel, index=False, renames=None):
     """Frontmatter of `rel` as HEAD has it, following a staged rename; "" when the page is
-    new. Lets a gate judge a transition (what changed) rather than a state."""
+    new or was not a board initiative at HEAD, so entering the board counts as a
+    transition. Lets a gate judge what changed rather than a state."""
     old = (renames or {}).get(rel, rel)
-    return fm_block(git_text(kb, old))
+    fm = fm_block(git_text(kb, old))
+    return fm if _board_initiative(fm) else ""
+
+
+NULLISH = {"~", "null", "Null", "NULL", "''", '""'}
+
+
+def present(fm, key):
+    """A field's value, with YAML nulls and empty quotes read as absent."""
+    v = frontmatter_value(fm, key)
+    return None if v is None or v.strip() in NULLISH else v
 
 
 def state_dir(kb):
@@ -252,7 +309,7 @@ def initiative_issues(schema, fm, prev_fm=None, active_count=None):
     def wc(s):
         return len(s.split()) if s else 0
 
-    get = lambda k: frontmatter_value(fm, k)
+    get = lambda k: present(fm, k)
     kinds = set(schema.get("assignment_kind", []))
     statuses = set(schema.get("assignment_status", []))
     waiting = set(schema.get("waiting_on", []))
@@ -285,7 +342,7 @@ def initiative_issues(schema, fm, prev_fm=None, active_count=None):
         for field in fields:
             if get(field):
                 continue
-            had = bool(prev_fm) and bool(frontmatter_value(prev_fm, field))
+            had = bool(prev_fm) and bool(present(prev_fm, field))
             if prev_status != at_status:
                 out.append((field, f"required when assignment_status becomes '{at_status}'"))
             elif had:
@@ -341,7 +398,7 @@ def parse_aims(kb, cfg, text=None):
     text = read(kb, rel) if text is None else text
     m = re.search(r"(?ms)^##\s+" + re.escape(conf["heading"]) + r"\s*$(.*?)(?=^## |\Z)", text)
     if not m:
-        return [], [f"{rel}: section '## {conf['heading']}' not found"]
+        return [], [f"{rel} aims: section '## {conf['heading']}' not found"]
     aims, errors, live = [], [], set()
     import datetime
     for line in m.group(1).splitlines():
@@ -349,13 +406,13 @@ def parse_aims(kb, cfg, text=None):
             continue
         lm = AIM_LINE.match(line.rstrip())
         if not lm:
-            errors.append(f"{rel}: aim line does not parse: {line[:70]!r}")
+            errors.append(f"{rel} aims: line does not parse: {line[:70]!r}")
             continue
         try:
             datetime.date.fromisoformat(lm.group("date"))
             datetime.date.fromisoformat(lm.group("reviewed"))
         except ValueError:
-            errors.append(f"{rel}: {lm.group('id')} has a bad date")
+            errors.append(f"{rel} aims: {lm.group('id')} has a bad date")
             continue
         carrier, carrier_status = None, None
         if lm.group("carrier") != "none":
@@ -363,12 +420,12 @@ def parse_aims(kb, cfg, text=None):
             carrier = os.path.normpath(os.path.join(os.path.dirname(rel), tgt)).replace(os.sep, "/")
             cfm = fm_block(read(kb, carrier))
             if frontmatter_value(cfm, "type") != "initiative":
-                errors.append(f"{rel}: {lm.group('id')} carrier {carrier} is not an initiative page")
+                errors.append(f"{rel} aims: {lm.group('id')} carrier {carrier} is not an initiative page")
             carrier_status = frontmatter_value(cfm, "assignment_status")
         superseded = bool(lm.group("superseded"))
         if not superseded:
             if lm.group("id") in live:
-                errors.append(f"{rel}: {lm.group('id')} appears twice without 'superseded'")
+                errors.append(f"{rel} aims: {lm.group('id')} appears twice without 'superseded'")
             live.add(lm.group("id"))
         aims.append({"id": lm.group("id"), "date": lm.group("date"), "text": lm.group("text"),
                      "carrier": carrier, "reviewed": lm.group("reviewed"),

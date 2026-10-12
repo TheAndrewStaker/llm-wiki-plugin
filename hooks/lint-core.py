@@ -117,7 +117,7 @@ def bad_yaml_keys(fm_text):
 
 for f in files:
     try:
-        text = open(f, encoding="utf-8", errors="replace").read()
+        text = wikilib.read(KB, f)
     except OSError:
         continue
     d = os.path.dirname(f)

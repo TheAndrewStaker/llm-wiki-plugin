@@ -37,6 +37,7 @@ if DELTA:
                                   cwd=KB, capture_output=True, text=True).stdout.split()
     prose_dirs = tuple(cfg["prose_dirs"])
     idx = wikilib.mention_index(KB, cfg, files)
+    renames = wikilib.renamed_from(KB, index=index_mode)
     added = 0
     for f in sorted(set(changed)):
         if not f.startswith(prose_dirs) or os.path.basename(f) == "index.md" or f.endswith(".base"):
@@ -44,7 +45,7 @@ if DELTA:
         new_text = wikilib.git_text(KB, f, "") if index_mode else wikilib.read(KB, f)
         if not new_text:
             continue
-        old_text = wikilib.git_text(KB, f, "HEAD")
+        old_text = wikilib.git_text(KB, renames.get(f, f), "HEAD")
         now = {page: disp for _, disp, page, _ in wikilib.missed_mentions_text(idx, f, new_text)}
         before = {page for _, _, page, _ in wikilib.missed_mentions_text(idx, f, old_text)} if old_text else set()
         gained = sorted(now[p] for p in now if p not in before)
