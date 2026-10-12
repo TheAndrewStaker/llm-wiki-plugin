@@ -6,6 +6,10 @@ This project follows Keep a Changelog and intends to use Semantic Versioning aft
 
 ### Added
 
+- Board period auto-derivation: optional `cycle_source` config (glob of per-period markdown
+  files, start/end frontmatter fields, label from file name) sets the board's current period and end
+  date at generation time; `current_cycle`/`cycle_ends` remain the fallback, and the header names
+  which source was used. A missing or unsynced source degrades to the fallback with a visible note.
 - Shared Claude Code and Codex plugin/skill discovery.
 - Model-neutral `wiki` CLI, deterministic lint/search, retrieval evaluation, and OKF export validation.
 - Immutable source staging with SHA-256 provenance and an explicit untrusted-content policy.

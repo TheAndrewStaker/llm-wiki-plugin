@@ -1871,6 +1871,47 @@ json.dump(c, open(p, "w"))
 PYEOF
 assert "off-board.md never appears on the board" "0" "$(printf '%s' "$board" | grep -c 'Off Board')"
 
+echo "--- board.py: cycle_source derives the current period from per-period files ---"
+CS="$(mktemp -d)"
+cp "$IW/wiki.config.json" "$CS/cfg.orig"
+python3 - "$CS" "$IW/wiki.config.json" <<'PYEOF'
+import datetime, json, sys
+cs, cfgp = sys.argv[1], sys.argv[2]
+t = datetime.date.today(); d = lambda n: (t + datetime.timedelta(days=n)).isoformat()
+def mk(n, s, e, w):
+    open(f"{cs}/period-{n}.md", "w").write(f"---\nbegin: {s}\nbuild_end: {e}\nhard_end: {w}\n---\nbody\n")
+mk(1, d(-90), d(-50), d(-40)); mk(2, d(-10), d(20), d(30)); mk(3, d(40), d(70), d(80))
+c = json.load(open(cfgp)); c["current_cycle"] = 99; c["cycle_ends"] = "2001-01-01"
+c["cycle_source"] = {"glob": cs + "/period-*.md", "start_field": "begin", "end_field": "build_end",
+                     "window_end_field": "hard_end", "label_regex": r"period-(\d+)"}
+json.dump(c, open(cfgp, "w"))
+open(cs + "/exp", "w").write(d(20))
+PYEOF
+exp=$(cat "$CS/exp")
+cb=$(python3 "$H/board.py" "$IW")
+assert_contains "current period label comes from the file, not the stale config" "cycle 2 ends $exp" "$cb"
+assert_contains "board names the source file" "[from period-2.md]" "$cb"
+assert "stale hand-set cycle is not shown" "0" "$(printf '%s' "$cb" | grep -c 'cycle 99')"
+python3 - "$IW/wiki.config.json" "$CS" <<'PYEOF'
+import json, sys
+c = json.load(open(sys.argv[1])); c["cycle_source"]["glob"] = sys.argv[2] + "/gone/*.md"
+json.dump(c, open(sys.argv[1], "w"))
+PYEOF
+cb=$(python3 "$H/board.py" "$IW"); rc=$?
+assert "missing source dir never fails the generator" "0" "$rc"
+assert_contains "missing source falls back to config with a visible note" "cycle 99 ends 2001-01-01 -- PASSED, re-set cycle_ends [cycle_source matched no readable" "$cb"
+python3 - "$IW/wiki.config.json" "$CS" <<'PYEOF'
+import json, sys
+c = json.load(open(sys.argv[1])); c["cycle_source"]["glob"] = sys.argv[2] + "/period-*.md"
+c["cycle_source"]["window_end_field"] = "build_end"
+json.dump(c, open(sys.argv[1], "w"))
+PYEOF
+rm -f "$CS/period-2.md" "$CS/period-3.md"
+cb=$(python3 "$H/board.py" "$IW")
+assert_contains "with no covering period the most recent past one is used and flagged" "most recent past, none covers today" "$cb"
+cp "$CS/cfg.orig" "$IW/wiki.config.json"
+rm -rf "$CS"
+
 echo "--- board.py --write replaces only the marked block, idempotently ---"
 python3 "$H/board.py" "$IW" --write
 first=$(cat "$IW/STATE.md")

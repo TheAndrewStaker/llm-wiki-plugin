@@ -15,6 +15,7 @@ Usage:
 """
 import argparse
 import datetime
+import glob
 import os
 import re
 import sys
@@ -117,11 +118,103 @@ def fmt_row(item, today):
     return line
 
 
+def _iso(v):
+    try:
+        return datetime.date.fromisoformat((v or "").strip().strip("\"'"))
+    except ValueError:
+        return None
+
+
+def resolve_period(kb, cfg, today):
+    """Derive the current period (label, end date, provenance) from per-period markdown files.
+
+    Optional config `cycle_source` (an object):
+      glob         required; one markdown file per period. `~` and a path relative to the
+                   wiki root are both expanded.
+      start_field  frontmatter key holding the start date (default "start")
+      end_field    key holding the end date the board SHOWS (default "end")
+      window_end_field  key that closes the period's window for "is it current?" (default:
+                   end_field). Lets a period stay current through a trailing phase.
+      label_field  frontmatter key holding the label; when absent the label is the first
+                   capture group of label_regex run on the file name (default "(\\d+)").
+
+    The current period is the file whose start <= today <= window end (latest start wins on
+    overlap); with none, the most recent past one, flagged. Returns None when cycle_source is
+    not configured, else a dict; an unreadable or empty source is reported in `note` and never
+    raises, so a commit hook is never broken by an unsynced directory.
+    """
+    spec = cfg.get("cycle_source")
+    if not isinstance(spec, dict) or not spec.get("glob"):
+        return None
+    start_f = spec.get("start_field", "start")
+    end_f = spec.get("end_field", "end")
+    win_f = spec.get("window_end_field", end_f)
+    label_f = spec.get("label_field")
+    label_re = spec.get("label_regex", r"(\d+)")
+    pattern = os.path.expanduser(spec["glob"])
+    if not os.path.isabs(pattern):
+        pattern = os.path.join(kb, pattern)
+    try:
+        files = sorted(glob.glob(pattern))
+    except Exception as exc:  # defensive: a bad pattern must not break a hook
+        return {"note": f"cycle_source unusable ({exc})"}
+    periods = []
+    for f in files:
+        try:
+            with open(f, encoding="utf-8") as fh:
+                text = fh.read(8192)
+        except OSError:
+            continue
+        block = re.match(r"^---\n(.*?)\n---", text, re.S)
+        if not block:
+            continue
+        fm = block.group(1)
+        start = _iso(wikilib.frontmatter_value(fm, start_f))
+        end = _iso(wikilib.frontmatter_value(fm, end_f))
+        win = _iso(wikilib.frontmatter_value(fm, win_f)) or end
+        if not (start and end and win):
+            continue
+        label = wikilib.frontmatter_value(fm, label_f) if label_f else None
+        if not label:
+            m = re.search(label_re, os.path.basename(f))
+            label = m.group(1) if m and m.groups() else None
+        if not label:
+            continue
+        periods.append({"label": label, "start": start, "end": end, "win": win,
+                        "file": os.path.basename(f)})
+    if not periods:
+        return {"note": "cycle_source matched no readable period files "
+                        "(source not synced?); using config values"}
+    current = [p for p in periods if p["start"] <= today <= p["win"]]
+    if current:
+        best = max(current, key=lambda p: p["start"])
+        best["flag"] = ""
+    else:
+        past = [p for p in periods if p["win"] < today]
+        if not past:
+            return {"note": "cycle_source has no period covering today; using config values"}
+        best = max(past, key=lambda p: p["win"])
+        best["flag"] = "most recent past, none covers today"
+    return best
+
+
 def build(kb, repo=None):
     cfg = wikilib.load_config(kb)
     current_cycle = cfg.get("current_cycle")
     cycle_ends = cfg.get("cycle_ends")
     today = datetime.date.today()
+    cycle_note = ""
+    try:
+        per = resolve_period(kb, cfg, today)
+    except Exception as exc:  # never let period derivation break a commit hook
+        per = {"note": f"cycle_source failed ({exc}); using config values"}
+    if per and per.get("label"):
+        current_cycle, cycle_ends = per["label"], per["end"].isoformat()
+        cycle_note = f" [from {per['file']}" + (f"; {per['flag']}" if per["flag"] else "") + "]"
+    elif per:
+        cycle_note = f" [{per['note']}]"
+    elif current_cycle or cycle_ends:
+        cycle_note = " [hand-set in config]"
 
     items = load_initiatives(kb)
     shipped, active = [], []
@@ -147,7 +240,10 @@ def build(kb, repo=None):
                 ended = datetime.date.fromisoformat(cycle_ends) < today
             except ValueError:
                 ended = False
-            hdr += f" ends {cycle_ends}" + (" -- PASSED, re-set cycle_ends" if ended else "")
+            hdr += f" ends {cycle_ends}" + (
+                " -- PASSED" + ("" if per and per.get("label") else ", re-set cycle_ends")
+                if ended else "")
+    hdr += cycle_note
     hdr += " · priority is a rank you state, 1-9)"
     lines.append(hdr)
 
