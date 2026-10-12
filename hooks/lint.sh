@@ -59,6 +59,8 @@ core_rc=$?
 graph=""; missed=""; wanted=""; inbox=""; drift=""; rubber=""; neigh=""; vendor=""
 needed islands && graph=$(python3 "$H/graph-check.py" "$KB" 2>/dev/null || true)
 needed missed_links && missed=$(python3 "$H/missed-links.py" "$KB" 2>/dev/null || true)
+mla_out=""
+needed missed_links_added && mla_out=$(python3 "$H/missed-links.py" --delta "$KB" 2>/dev/null || true)
 needed rubber_stamp && rubber=$(python3 "$H/rubber-stamp.py" "$KB" 2>/dev/null || true)
 if [ "$gate_only" != "1" ]; then
   wanted=$(python3 "$H/wanted-pages.py" "$KB" 2>/dev/null || true)
@@ -86,6 +88,7 @@ rm -f "$core_err"
 printf '%s\n' "$core"   | grep -vE '^CORE ' || true
 printf '%s\n' "$graph"  | grep '^  ISLAND' || true
 printf '%s\n' "$missed" | grep '^  MISSED-LINK' || true
+printf '%s\n' "$mla_out" | grep '^  MISSED-LINK-ADDED' || true
 printf '%s\n' "$wanted" | grep '^  WANTED' || true
 printf '%s\n' "$inbox"  | grep '^  INBOX-' || true
 printf '%s\n' "$drift"  | grep '^  DRIFT' || true
@@ -112,6 +115,7 @@ em=$(printf '%s\n' "$core"   | sed -n 's/.* extmissing=\([0-9]*\).*/\1/p')
 ig=$(printf '%s\n' "$core"   | sed -n 's/.* ignored=\([0-9]*\)$/\1/p')
 islands=$(printf '%s\n' "$graph"  | sed -n 's/^COMPONENTS=[0-9]* ISLAND_NODES=//p')
 ml=$(printf '%s\n' "$missed" | sed -n 's/^MISSED_LINKS=//p')
+mla=$(printf '%s\n' "$mla_out" | sed -n 's/^MISSED_LINKS_ADDED=//p')
 wp=$(printf '%s\n' "$wanted" | sed -n 's/^WANTED=\([0-9]*\).*/\1/p')
 ib=$(printf '%s\n' "$inbox"  | sed -n 's/^INBOX=//p')
 dr=$(printf '%s\n' "$drift"  | sed -n 's/^DRIFT=\([0-9]*\).*/\1/p')
@@ -124,7 +128,7 @@ pd=$(printf '%s\n' "$port"   | sed -n 's/.* desc=\([0-9]*\).*/\1/p')
 ng=$(printf '%s\n' "$neigh"  | sed -n 's/^NEIGHBORS=//p')
 ic=$(printf '%s\n' "$init"   | sed -n 's/^INIT-FAIL=\([0-9]*\).*/\1/p')
 
-summary_line="broken-links:${b:-?}  external:${ex:-?}/${em:-?}  ignored-targets:${ig:-?}  unresolved:${u:-?}  bad-yaml:${by:-?}  orphans:${orp:-?}  islands:${islands:-?}  missed-links:${ml:-?}  no-type:${nt:-?}  stale:${st:-?}  collisions:${col:-?}  unindexed:${unx:-?}  missing-fields:${mf:-?}  dead-ends:${de:-?}  stale-pointers:${sp:-?}  chains:${ch:-?}  wanted:${wp:-?}  inbox:${ib:-?}  drift:${dr:-?}  rubber-stamp:${rs:-?}  dup-keys:${dk:-?}  fm-tabs:${tb:-?}  ambig-yaml:${pa:-?}  desc-quality:${pd:-?}  neighbors:${ng:-?}  vendor:${vn:-?}  init-fail:${ic:-?}"
+summary_line="broken-links:${b:-?}  external:${ex:-?}/${em:-?}  ignored-targets:${ig:-?}  unresolved:${u:-?}  bad-yaml:${by:-?}  orphans:${orp:-?}  islands:${islands:-?}  missed-links:${ml:-?}  missed-links-added:${mla:--}  no-type:${nt:-?}  stale:${st:-?}  collisions:${col:-?}  unindexed:${unx:-?}  missing-fields:${mf:-?}  dead-ends:${de:-?}  stale-pointers:${sp:-?}  chains:${ch:-?}  wanted:${wp:-?}  inbox:${ib:-?}  drift:${dr:-?}  rubber-stamp:${rs:-?}  dup-keys:${dk:-?}  fm-tabs:${tb:-?}  ambig-yaml:${pa:-?}  desc-quality:${pd:-?}  neighbors:${ng:-?}  vendor:${vn:-?}  init-fail:${ic:-?}"
 echo "${C}== summary ==${Z}  ${summary_line}"
 
 # Gate-only restores stdout here, so only the verdict lines below print.
@@ -157,11 +161,11 @@ fi
 if [ -n "${ic:-}" ] && [ "$ic" -gt 0 ]; then
   echo "${R}FAIL${Z} (initiative schema violations -- see INIT-FAIL lines above)"; exit 1
 fi
-budget_report=$(python3 - "$KB" "${orp:--1}" "${islands:--1}" "${ml:--1}" "${col:--1}" "${unx:--1}" "${de:--1}" "${em:--1}" "${ig:--1}" "${rs:--1}" <<'PY'
+budget_report=$(python3 - "$KB" "${orp:--1}" "${islands:--1}" "${ml:--1}" "${col:--1}" "${unx:--1}" "${de:--1}" "${em:--1}" "${ig:--1}" "${rs:--1}" "${mla:--1}" <<'PY'
 import json, os, sys
 root, values = sys.argv[1], sys.argv[2:]
 names = ("orphan", "islands", "missed_links", "collision", "unindexed", "deadend",
-         "external_missing", "ignored_targets", "rubber_stamp")
+         "external_missing", "ignored_targets", "rubber_stamp", "missed_links_added")
 try:
     cfg = json.load(open(os.path.join(root, "wiki.config.json"), encoding="utf-8"))
 except (FileNotFoundError, ValueError, OSError):
@@ -179,6 +183,22 @@ PY
 budget_rc=$?
 if [ "$budget_rc" -ne 0 ]; then
   printf '%s\n' "$budget_report"
+  # Name the pages behind each exceeded counter (gate-only included), so a blocked commit
+  # says what to fix, not only by how much.
+  for name in $(printf '%s\n' "$budget_report" | sed -n 's/^  BUDGET \([a-z_]*\)=.*/\1/p'); do
+    case "$name" in
+      orphan)             printf '%s\n' "$core"    | grep '^  ORPHAN ' ;;
+      islands)            printf '%s\n' "$graph"   | grep '^  ISLAND' ;;
+      missed_links)       printf '%s\n' "$missed"  | grep '^  MISSED-LINK ' ;;
+      missed_links_added) printf '%s\n' "$mla_out" | grep '^  MISSED-LINK-ADDED ' ;;
+      collision)          printf '%s\n' "$core"    | grep '^  COLLISION ' ;;
+      unindexed)          printf '%s\n' "$core"    | grep '^  UNINDEXED ' ;;
+      deadend)            printf '%s\n' "$core"    | grep '^  DEADEND ' ;;
+      external_missing)   printf '%s\n' "$core"    | grep '^  EXTERNAL ' ;;
+      ignored_targets)    printf '%s\n' "$core"    | grep '^  IGNORED-TARGET ' ;;
+      rubber_stamp)       printf '%s\n' "$rubber"  | grep '^  RUBBER-STAMP' ;;
+    esac
+  done
   echo "${R}FAIL${Z} (configured advisory budget exceeded)"; exit 1
 fi
 echo "${G}OK${Z} (hard checks clean; warnings advisory)"; exit 0
