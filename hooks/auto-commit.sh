@@ -7,9 +7,10 @@
 # working tree for the next turn to fix. A failure is NOT silent: it writes .auto-commit-failed
 # (surfaced by session-status.sh at every session start until it clears). No-op when clean.
 #
-# Initiative-gate failures are attributed first. The session whose transcript wrote a failing
-# page gets exit 2 once, with the failing lines, so it fixes them in the same turn. Any other
-# session commits everything except the failing pages and exits 0.
+# Gate failures that name a page are attributed first. The session whose transcript wrote a
+# failing page gets exit 2 once, with the failing lines, so it fixes them in the same turn.
+# Any other session commits everything except the failing pages and exits 0. The log guard
+# (log-guard.py) rides the same exit: one block per stop chain, after the commit.
 set -uo pipefail
 
 input=$(cat 2>/dev/null || true)
@@ -42,7 +43,25 @@ print(str(bool(cfg.get("auto_commit", True))).lower(),
 PY
 )
 fi
-[ "$auto_commit" = "true" ] || exit 0
+# Log guard: a Stop with work events (commits, PRs) recorded since the session last wrote
+# to the wiki blocks once with the reason; a continuation never re-evaluates. SessionEnd
+# clears the session's record.
+guard_msg=""
+if command -v python3 >/dev/null 2>&1 && [ -f "$H/log-guard.py" ]; then
+  if [ "$event" = "Stop" ] && [ "$stop_active" = "false" ]; then
+    guard_msg=$(printf '%s' "$input" | python3 "$H/log-guard.py" "$KB" 2>/dev/null || true)
+  elif [ "$event" = "SessionEnd" ]; then
+    printf '%s' "$input" | python3 "$H/log-guard.py" "$KB" --clear >/dev/null 2>&1 || true
+  fi
+fi
+finish() { # finish <rc>: the guard's block comes after whatever was committed
+  if [ -n "$guard_msg" ]; then
+    printf '%s\n' "$guard_msg" >&2
+    exit 2
+  fi
+  exit "$1"
+}
+[ "$auto_commit" = "true" ] || finish 0
 
 held=""; mine=""; fails=""
 # Stop and SessionEnd can fire together. Serialize the whole add/commit/push transaction.
@@ -50,7 +69,7 @@ lock="$(git rev-parse --git-dir)/wiki-auto-commit.lock"
 if ! mkdir "$lock" 2>/dev/null; then
   owner=$(cat "$lock/pid" 2>/dev/null || true)
   if [ -n "$owner" ] && kill -0 "$owner" 2>/dev/null; then
-    exit 0
+    finish 0
   fi
   rm -f "$lock/pid" 2>/dev/null || exit 0
   rmdir "$lock" 2>/dev/null || exit 0
@@ -75,10 +94,13 @@ else
   GIT_INDEX_FILE="$view" git read-tree HEAD
   GIT_INDEX_FILE="$view" git add -A
 
-  if [ -f "$H/initiative-check.py" ]; then
-    fails=$(GIT_INDEX_FILE="$view" WIKI_CHECK_INDEX=1 python3 "$H/initiative-check.py" "$KB" 2>/dev/null | grep '^  INIT-FAIL ' || true)
+  # Every gate line that names a page is attributed: the schema gate, the hard checks, and
+  # any advisory counter a budget turned into a gate. The staged view is what gets judged.
+  if [ -f "$H/lint.sh" ]; then
+    fails=$(GIT_INDEX_FILE="$view" WIKI_CHECK_INDEX=1 WIKI_LINT_GATE_ONLY=1 bash "$H/lint.sh" "$KB" 2>/dev/null \
+      | grep -E '^  (INIT-FAIL|BROKEN LINK|UNRESOLVED|BADYAML|PORT-DUPKEY|PORT-TAB|ORPHAN|UNINDEXED|DEADEND|MISSED-LINK-ADDED|IGNORED-TARGET) ' || true)
     if [ -n "$fails" ]; then
-      files=$(printf '%s\n' "$fails" | awk '{print $2}' | sort -u)
+      files=$(printf '%s\n' "$fails" | sed -E 's/^  (BROKEN LINK|[A-Z-]+) ([^ ]+).*/\2/' | sort -u)
       if [ -n "$transcript" ] && [ -f "$transcript" ]; then
         # shellcheck disable=SC2086
         mine=$(python3 "$H/session-touched.py" "$transcript" "$KB" $files 2>/dev/null || true)
@@ -88,8 +110,9 @@ else
         {
           echo "wiki: pages this session wrote fail the commit gate, so nothing was committed:"
           printf '%s\n' "$fails" | grep -F -f <(printf '%s\n' "$mine")
-          echo "Fix them now, preferably with: wiki-fm set <page> <field>=<value>"
-          echo "(wiki-fm validates before writing; depth belongs in the page body as a dated log entry)."
+          echo "Fix them now: frontmatter with wiki-fm set <page> <field>=<value> (it validates"
+          echo "before writing); a missing index line, link or target by editing the page named."
+          [ -n "$guard_msg" ] && printf '%s\n' "$guard_msg"
         } >&2
         exit 2
       fi
@@ -120,7 +143,7 @@ else
         printf '%s\n' "$out"
       } > "$KB/.auto-commit-failed"
       echo "wiki auto-commit FAILED -- see $KB/.auto-commit-failed; run the wiki lint" >&2
-      exit 1
+      finish 1
     fi
   fi
 fi
@@ -151,4 +174,4 @@ if [ "$auto_push" = "true" ] && git remote get-url origin >/dev/null 2>&1 \
   fi
   rm -f "$perr"
 fi
-exit "${hook_rc:-0}"
+finish "${hook_rc:-0}"

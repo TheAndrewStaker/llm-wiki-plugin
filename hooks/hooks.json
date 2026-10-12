@@ -25,7 +25,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/auto-commit.sh"
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/auto-commit.sh",
+            "timeout": 30
           }
         ]
       }
@@ -37,6 +38,15 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/initiative-caps.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/session-record.py"
           }
         ]
       }
