@@ -29,9 +29,10 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import wikilib
 
-# Same three caps initiative-check.py gates the commit on, read from the same block, so
+# Same caps initiative-check.py gates the commit on, read from the same block, so
 # the two can never disagree about what a page owes.
-FIELDS = (("summary", "summary_max_words"), ("next", "next_max_words"), ("ask", "ask_max_words"))
+FIELDS = (("summary", "summary_max_words"), ("next", "next_max_words"),
+          ("verify", "verify_max_words"), ("ask", "ask_max_words"))
 
 
 def targets(kb):

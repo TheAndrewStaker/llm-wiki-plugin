@@ -58,6 +58,7 @@ def load_initiatives(kb):
             "priority_set": wikilib.frontmatter_value(fm, "priority_set"),
             "cycle": wikilib.frontmatter_value(fm, "cycle"),
             "next": wikilib.frontmatter_value(fm, "next") or "",
+            "verify": wikilib.frontmatter_value(fm, "verify") or "",
             "waiting_on": wikilib.frontmatter_value(fm, "waiting_on") or "none",
             "ask": wikilib.frontmatter_value(fm, "ask") or "",
             "repos": wikilib.fm_list(fm, "repos"),
@@ -109,6 +110,8 @@ def fmt_row(item, today):
     tag = "·".join(x for x in (item["kind"], item["status"],
                                 f"c{item['cycle']}" if item["cycle"] else "") if x)
     line = f"{item['rank']}. [{tag}] {item['title']} → next: {item['next']}"
+    if item.get("verify"):
+        line += f" → verify: {item['verify']}"
     if item["repos"]:
         line += f" (repos: {', '.join(item['repos'])})"
     if item["waiting_on"] != "none":

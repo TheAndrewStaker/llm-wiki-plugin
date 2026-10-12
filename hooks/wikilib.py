@@ -203,7 +203,7 @@ def initiative_issues(schema, fm):
     if wo != "none" and not ask:
         out.append(("ask", f"required because waiting_on is '{wo}', not 'none'"))
     for field, cap_key in (("summary", "summary_max_words"), ("next", "next_max_words"),
-                           ("ask", "ask_max_words")):
+                           ("verify", "verify_max_words"), ("ask", "ask_max_words")):
         cap, val = schema.get(cap_key, 0), get(field)
         if cap and val and wc(val) > cap:
             out.append((field, f"{wc(val)}w > {cap}w cap"))

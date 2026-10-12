@@ -2032,7 +2032,7 @@ cat > "$FW/wiki.config.json" <<'EOF'
 {"auto_commit": true, "auto_push": false,
  "initiative_schema": {"assignment_kind": ["self"], "assignment_status": ["active"],
    "waiting_on": ["none", "design"], "summary_max_words": 5, "next_max_words": 5,
-   "ask_max_words": 5}}
+   "verify_max_words": 5, "ask_max_words": 5}}
 EOF
 for n in alpha beta; do cat > "$FW/initiatives/$n.md" <<EOF
 ---
@@ -2060,6 +2060,18 @@ out=$($FM set "$FW/initiatives/alpha.md" "next=one two three four five six" 2>&1
 assert "over-cap set exits 1" "1" "$rc"
 assert_contains "the refusal names the count" "next: 6w > 5w cap" "$out"
 assert "the page is untouched" "$before" "$(cat "$FW/initiatives/alpha.md")"
+
+echo "--- wiki-fm: verify is capped like next, and the board shows it ---"
+out=$($FM set "$FW/initiatives/alpha.md" "verify=one two three four five six" 2>&1); rc=$?
+assert "over-cap verify exits 1" "1" "$rc"
+assert_contains "the verify refusal names the count" "verify: 6w > 5w cap" "$out"
+out=$($FM set "$FW/initiatives/alpha.md" "verify=tests pass on main" priority=3 priority_set=2026-01-01 2>&1); rc=$?
+assert "an in-cap verify is accepted" "0" "$rc"
+out=$(python3 "$FW/hooks/board.py" "$FW" 2>&1)
+assert_contains "the board row carries verify after next" 'next: ship it → verify: "tests pass on main"' "$out"
+$FM set "$FW/initiatives/alpha.md" verify= priority= priority_set= >/dev/null 2>&1
+out=$(python3 "$FW/hooks/board.py" "$FW" 2>&1)
+case "$out" in *"→ verify:"*) assert "an empty verify adds nothing to the row" "absent" "present";; *) assert "an empty verify adds nothing to the row" "absent" "absent";; esac
 
 echo "--- wiki-fm: a cross-field rule is checked on the edit as a whole ---"
 out=$($FM set "$FW/initiatives/alpha.md" waiting_on=design 2>&1); rc=$?

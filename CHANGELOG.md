@@ -6,6 +6,8 @@ This project follows Keep a Changelog and intends to use Semantic Versioning aft
 
 ### Added
 
+- Optional initiative `verify` field: how to tell `next` is done. Capped by `verify_max_words`
+  like `next`, checked by the commit gate and `wiki-fm`, and shown on the board row after `next`.
 - Board period auto-derivation: optional `cycle_source` config (glob of per-period markdown
   files, start/end frontmatter fields, label from file name) sets the board's current period and end
   date at generation time; `current_cycle`/`cycle_ends` remain the fallback, and the header names
