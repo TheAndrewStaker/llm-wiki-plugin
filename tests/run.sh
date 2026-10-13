@@ -1925,6 +1925,44 @@ json.dump(c, open(p, "w"))
 PYEOF
 assert "off-board.md never appears on the board" "0" "$(printf '%s' "$board" | grep -c 'Off Board')"
 
+echo "--- board.py --repo: an initiative bound by repos: yields a resume block, waiting or not ---"
+cat > "$IW/initiatives/bound.md" <<'EOF2'
+---
+type: initiative
+title: Bound Work
+timestamp: 2026-01-10
+assignment_kind: self
+assignment_status: active
+priority: 2
+next: "Ship the thing"
+verify: "The thing is visible"
+waiting_on: owner
+ask: "approve it"
+repos: [demo-repo]
+---
+# Bound Work
+
+### first-scope · active
+### second-scope · done
+### third-scope · planned
+EOF2
+git -C "$IW" add -A >/dev/null 2>&1
+board=$(python3 "$H/board.py" "$IW" --repo demo-repo)
+assert_contains "a bound initiative is resumed even while waiting on the owner" \
+  "Resume bound (#2, active): next → Ship the thing" "$board"
+assert_contains "the resume block carries verify" "verify: The thing is visible" "$board"
+assert_contains "the resume block names what it waits on" "[waiting on owner: approve it]" "$board"
+assert_contains "the resume block lists open scopes in order and skips done ones" \
+  "scopes: first-scope · active; third-scope · planned" "$board"
+assert "done scopes are not listed" "0" "$(printf '%s' "$board" | grep -c 'second-scope')"
+assert_contains "the resume block names the page" "page: initiatives/bound.md" "$board"
+assert "the fallback pointer is not printed when a bound initiative exists" "0" \
+  "$(printf '%s' "$board" | grep -c 'Where demo-repo stands')"
+git -C "$IW" rm -q --cached initiatives/bound.md >/dev/null 2>&1; rm -f "$IW/initiatives/bound.md"
+board=$(python3 "$H/board.py" "$IW" --repo demo-repo)
+assert_contains "with nothing bound, the fallback pointer says so" \
+  "(no initiative lists demo-repo in repos:)" "$board"
+
 echo "--- board.py: cycle_source derives the current period from per-period files ---"
 CS="$(mktemp -d)"
 cp "$IW/wiki.config.json" "$CS/cfg.orig"

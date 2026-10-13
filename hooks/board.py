@@ -9,9 +9,11 @@ Usage:
   board.py [WIKI_ROOT]                  print the board to stdout
   board.py [WIKI_ROOT] --write          replace the block between <!-- board:begin -->
                                          and <!-- board:end --> in STATE.md
-  board.py [WIKI_ROOT] --repo NAME      also print one "Where NAME stands" line,
-                                         the first Now/Next row not waiting on anyone whose
-                                         repos (if set) contains NAME or carries no repos
+  board.py [WIKI_ROOT] --repo NAME      also print a resume block: every initiative whose
+                                         repos lists NAME (next, verify, waiting, open
+                                         scopes, page), or, when none does, one "Where NAME
+                                         stands" line for the first Now/Next row not waiting
+                                         on anyone that carries no repos
 """
 import argparse
 import datetime
@@ -28,6 +30,20 @@ END = "<!-- board:end -->"
 KIND_ORDER = {"pitch": 0, "assigned": 1, "self": 2}
 MAX_ROWS = 12
 STALE_RANK_DAYS = 30
+MAX_RESUME = 3
+MAX_SCOPES = 6
+SCOPE_RE = re.compile(r"(?m)^### (.+?) · (planned|active|review|done)\s*$")
+
+
+def scope_lines(text):
+    return [(n.strip(), s) for n, s in SCOPE_RE.findall(text)]
+
+
+def unquote(v):
+    v = (v or "").strip()
+    if len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'":
+        return v[1:-1]
+    return v
 
 
 def wc(s):
@@ -63,6 +79,7 @@ def load_initiatives(kb):
             "ask": wikilib.frontmatter_value(fm, "ask") or "",
             "repos": wikilib.fm_list(fm, "repos"),
             "timestamp": wikilib.frontmatter_value(fm, "timestamp") or "",
+            "scopes": scope_lines(text),
         })
     return out
 
@@ -293,14 +310,32 @@ def build(kb, repo=None):
 
     pointer = None
     if repo:
-        candidates = now_rows + next_rows
-        for i in candidates:
-            if i["waiting_on"] != "none":
-                continue
-            if i["repos"] and repo not in i["repos"]:
-                continue
-            pointer = f"Where {repo} stands: #{i['rank']} {i['title']} → {i['next']}"
-            break
+        bound = [i for i in active if repo in i["repos"]]
+        if bound:
+            out = []
+            for i in bound[:MAX_RESUME]:
+                line = f"Resume {i['slug']} (#{i['rank']}, {i['status']}): next → {unquote(i['next'])}"
+                if i["verify"]:
+                    line += f" → verify: {unquote(i['verify'])}"
+                if i["waiting_on"] != "none":
+                    line += f" [waiting on {i['waiting_on']}: {unquote(i['ask'])}]"
+                open_scopes = [f"{n} · {st}" for n, st in i["scopes"] if st != "done"]
+                if open_scopes:
+                    line += " → scopes: " + "; ".join(open_scopes[:MAX_SCOPES])
+                    if len(open_scopes) > MAX_SCOPES:
+                        line += f"; +{len(open_scopes) - MAX_SCOPES} more"
+                line += f" → page: {i['path']}"
+                out.append(line)
+            if len(bound) > MAX_RESUME:
+                out.append(f"+{len(bound) - MAX_RESUME} more initiatives list {repo}")
+            pointer = "\n".join(out)
+        else:
+            for i in now_rows + next_rows:
+                if i["waiting_on"] != "none" or i["repos"]:
+                    continue
+                pointer = (f"Where {repo} stands: #{i['rank']} {i['title']} → {i['next']}"
+                           f" (no initiative lists {repo} in repos:)")
+                break
     return board, pointer
 
 

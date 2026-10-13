@@ -39,6 +39,11 @@ This project follows Keep a Changelog and intends to use Semantic Versioning aft
 - The commit gate reads the index being committed (`WIKI_CHECK_INDEX=1`): `wikilib.read` serves
   tracked pages from a one-shot `git cat-file --batch` of the index, so lint-core and graph-check
   judge what the commit contains and another session's uncommitted page can no longer fail it.
+- Session start resumes the initiative bound to the directory: `board.py --repo NAME` prints a
+  resume block for every initiative whose `repos:` lists NAME (rank, status, `next`, `verify`,
+  waiting state, open `### scope · status` headings, page path), whether or not it is waiting on
+  someone; the old one-line pointer remains only when no initiative lists the repo, and says so.
+  `session-status.sh` resolves a linked worktree to its main repository's name.
 - The log-guard recorder tokenizes each shell segment: a commit string inside a grep is not work,
   `git -C <dir> commit` is judged by `<dir>`, a `cd` earlier in the command moves later segments,
   "nothing to commit" and interrupted calls are not work, a log command whose output carries its

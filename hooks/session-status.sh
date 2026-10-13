@@ -177,7 +177,13 @@ fi
 # hooks/pre-commit regenerates it at commit time, so this just reads what's on disk; no
 # regeneration here keeps SessionStart read-only and fast.
 if [ -f "$KB/STATE.md" ] && [ -f "$H/board.py" ] && command -v python3 >/dev/null 2>&1; then
-  repo_name="$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null)"
+  # the main repository's name even inside a linked worktree: the common git dir's parent
+  common="$(git rev-parse --git-common-dir 2>/dev/null || true)"
+  repo_name=""
+  if [ -n "$common" ]; then
+    case "$common" in /*) ;; *) common="$PWD/$common" ;; esac
+    repo_name="$(basename "$(cd "$common/.." 2>/dev/null && pwd -P)")"
+  fi
   if [ -n "$repo_name" ]; then
     board_out=$(python3 "$H/board.py" "$KB" --repo "$repo_name" 2>/dev/null || true)
   else
