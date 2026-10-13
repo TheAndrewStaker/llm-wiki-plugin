@@ -82,6 +82,18 @@ cleanup_lock() {
 }
 trap cleanup_lock EXIT INT TERM
 
+# Queue expiry: at most once a day, on a Stop, inside the lock; commits on its own.
+if [ "$event" = "Stop" ] && [ -f "$H/queue-expire.py" ]; then
+  stamp="$(git rev-parse --git-dir)/wiki-queue-expire.day"
+  if [ "$(cat "$stamp" 2>/dev/null)" != "$(date +%F)" ]; then
+    python3 "$H/queue-expire.py" "$KB" --commit >/dev/null 2>"$(git rev-parse --git-dir)/wiki-queue-expire.err"
+    case $? in
+      0) date +%F > "$stamp"; rm -f "$(git rev-parse --git-dir)/wiki-queue-expire.err" ;;
+      3) rm -f "$(git rev-parse --git-dir)/wiki-queue-expire.err" ;;
+    esac
+  fi
+fi
+
 # nothing to commit (no tracked diff AND no allowlisted untracked files) -> no-op
 if git diff --quiet && git diff --cached --quiet && [ -z "$(git ls-files --others --exclude-standard)" ]; then
   # A clean tree means an earlier failure was resolved, by this hook or by hand. Clear the

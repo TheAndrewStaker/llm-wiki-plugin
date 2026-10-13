@@ -71,6 +71,12 @@ if schema:
     queue_total = owner_asks + oa_items
     if queue_max and queue_total > queue_max:
         issues.append(f"  INIT-FAIL open-asks/{owner}.md queue: {queue_total} items > {queue_max} cap")
+    if schema.get("queue_dated"):
+        for it in wikilib.parse_queue(oa_text):
+            if not it["date"]:
+                head = it["raw"].split("\n")[0][:60]
+                issues.append(f"  INIT-FAIL open-asks/{owner}.md line shape: '{head}' must start "
+                               "'- [ ] YYYY-MM-DD · <who asked, or self> · '")
 
     state_text = src("STATE.md")
     if state_text:

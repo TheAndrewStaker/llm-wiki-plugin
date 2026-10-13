@@ -296,6 +296,42 @@ def queue_owner(schema):
     return key, (schema or {}).get("owner_label", key.capitalize())
 
 
+QUEUE_LINE_RE = re.compile(r"^- \[( |x|X)\] (\d{4}-\d\d-\d\d) · ([^·\n]+?) · ")
+QUEUE_INIT_RE = re.compile(r"\]\((?:\.\./)?initiatives/([A-Za-z0-9._-]+)\.md(?:#[^)]*)?\)")
+
+
+def parse_queue(text):
+    """Bullets of an owner queue file as dicts: start/end line indexes (end exclusive), raw
+    text, checked, date (str or None), source (who asked, or None), initiatives (slugs linked
+    after the bullet's last '→', its owners; mentions before it do not count). A bullet runs
+    until the next bullet, a blank line or a heading; fenced code blocks are skipped."""
+    lines = text.split("\n")
+    items, i, fence = [], 0, False
+    while i < len(lines):
+        if lines[i].lstrip().startswith("```"):
+            fence = not fence
+            i += 1
+            continue
+        if fence or not lines[i].startswith("- "):
+            i += 1
+            continue
+        j = i + 1
+        while j < len(lines) and lines[j][:1] in (" ", "\t") and lines[j].strip():
+            j += 1
+        raw = "\n".join(lines[i:j])
+        m = QUEUE_LINE_RE.match(lines[i])
+        owners = raw.rsplit("→", 1)[1] if "→" in raw else ""
+        items.append({
+            "start": i, "end": j, "raw": raw,
+            "checked": bool(m and m.group(1) in "xX"),
+            "date": m.group(2) if m else None,
+            "source": m.group(3).strip() if m else None,
+            "initiatives": QUEUE_INIT_RE.findall(owners),
+        })
+        i = j
+    return items
+
+
 def initiative_issues(schema, fm, prev_fm=None, active_count=None):
     """Per-page initiative schema violations as (field, message) pairs. `fm` is the bare
     frontmatter block. Shared by the commit gate and the frontmatter writer so the two

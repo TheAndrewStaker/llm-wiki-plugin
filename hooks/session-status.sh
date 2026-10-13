@@ -22,6 +22,13 @@ ctx=""
 warn=""
 H="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+hook_input=""
+if [ ! -t 0 ] && command -v python3 >/dev/null 2>&1; then
+  hook_input=$(python3 -c 'import select, sys
+r, _, _ = select.select([sys.stdin], [], [], 1)
+print(sys.stdin.read() if r else "")' 2>/dev/null || true)
+fi
+
 # 0. Sync down first, BOUNDED: never let a stalled remote block session start. Only
 #    attempted when origin + an upstream are configured. macOS ships no GNU `timeout`, so
 #    this backgrounds the pull and polls briefly instead: past PULL_TIMEOUT seconds it
@@ -50,6 +57,8 @@ fi
 
 # 1. Health: a failed auto-commit/push or a missing lint gate must not stay silent.
 [ -f "$KB/.auto-commit-failed" ] && warn="${warn:+$warn | }wiki auto-commit is FAILING (see $KB/.auto-commit-failed) -- run the wiki lint and fix, or changes stay uncommitted"
+qerr="$(git -C "$KB" rev-parse --absolute-git-dir 2>/dev/null)/wiki-queue-expire.err"
+[ -s "$qerr" ] && warn="${warn:+$warn | }queue expiry FAILING (see $qerr) -- its archive commit was refused and rolled back"
 [ -f "$KB/.push-failed" ] && warn="${warn:+$warn | }wiki push is FAILING (see $KB/.push-failed) -- commits are local-only"
 if [ "$(git -C "$KB" config core.hooksPath 2>/dev/null)" != "hooks" ]; then
   warn="${warn:+$warn | }wiki lint gate not installed -- run: git -C $KB config core.hooksPath hooks"
@@ -256,6 +265,58 @@ PY
     if [ -n "${threshold:-}" ] && [ "${pages:-0}" -lt "$threshold" ]; then
       ctx+="(Wiki is young (${pages:-0} content pages): capture findings as pages; don't expect query to retrieve much yet.)"$'\n\n'
     fi
+  fi
+fi
+
+# 3b. Chat-only capture: after a compaction or a /clear, what the user asked for in the earlier
+#     context survives only in its transcript. Point the agent at it once, at the loss point.
+if [ -n "$hook_input" ] && command -v python3 >/dev/null 2>&1; then
+  capture=$(printf '%s' "$hook_input" | python3 -c '
+import glob, json, os, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+src, tp = d.get("source"), d.get("transcript_path") or ""
+if src not in ("compact", "clear") or not tp:
+    sys.exit(0)
+def ran_clear(f):
+    try:
+        with open(f, "rb") as fh:
+            fh.seek(0, 2)
+            start = max(0, fh.tell() - 65536)
+            fh.seek(start)
+            tail = fh.read().decode("utf-8", "ignore").splitlines()[1 if start else 0:]
+    except OSError:
+        return False
+    for line in reversed(tail):
+        try:
+            e = json.loads(line)
+        except ValueError:
+            continue
+        if e.get("type") != "user":
+            continue
+        c = (e.get("message") or {}).get("content")
+        return isinstance(c, str) and "<command-name>/clear</command-name>" in c
+    return False
+
+prev = tp
+if src == "clear":
+    others = sorted((f for f in glob.glob(os.path.join(os.path.dirname(tp), "*.jsonl"))
+                     if os.path.abspath(f) != os.path.abspath(tp)), key=os.path.getmtime, reverse=True)
+    prev = next((f for f in others[:20] if ran_clear(f)), "")
+if prev and os.path.isfile(prev):
+    print(prev)
+' 2>/dev/null)
+  if [ -n "$capture" ]; then
+    owner=$(python3 - "$H" "$KB" <<'PY' 2>/dev/null
+import sys
+sys.path.insert(0, sys.argv[1])
+import wikilib
+print(wikilib.queue_owner(wikilib.load_config(sys.argv[2]).get("initiative_schema"))[0])
+PY
+)
+    ctx+="(Context was just compacted or cleared. Before other work, list the user's own turns with \`python3 $H/user-turns.py ${capture}\` and file anything they asked for, committed to, or said they want to do that is not yet in the wiki: an initiative's frontmatter or log when one owns it, else a dated bullet in open-asks/${owner:-owner}.md shaped '- [ ] YYYY-MM-DD · <who asked, or self> · text (source link)'. Skip what is already filed; file nothing that is only chatter.)"$'\n\n'
   fi
 fi
 

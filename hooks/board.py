@@ -96,6 +96,13 @@ def default_rank(item, current_cycle):
     return 3
 
 
+def tier_of(item, schema):
+    """Tier from `kind_tier` ({kind: int}, lower outranks); absent config puts every item in
+    tier 0, so priority alone orders the board."""
+    tiers = schema.get("kind_tier") or {}
+    return int(tiers.get(item["kind"], max(tiers.values(), default=0)))
+
+
 def rank_of(item, current_cycle):
     p = item["priority"]
     if p and p.lstrip("-").isdigit():
@@ -116,6 +123,7 @@ def stale_rank(item, today):
 
 def sort_key(item):
     return (
+        item.get("tier", 0),
         item["rank"],
         item["waiting_on"] != "none",
         KIND_ORDER.get(item["kind"], 3),
@@ -236,6 +244,7 @@ def build(kb, repo=None):
     elif current_cycle or cycle_ends:
         cycle_note = " [hand-set in config]"
 
+    schema = cfg.get("initiative_schema") or {}
     items = load_initiatives(kb)
     shipped, active = [], []
     for it in items:
@@ -243,12 +252,21 @@ def build(kb, repo=None):
             shipped.append(it)
             continue
         it["rank"] = rank_of(it, current_cycle)
+        it["tier"] = tier_of(it, schema)
         active.append(it)
     active.sort(key=sort_key)
 
-    now_rows = [i for i in active if i["rank"] <= 2]
-    next_rows = [i for i in active if 3 <= i["rank"] <= 5]
     later_rows = [i for i in active if i["rank"] >= 6]
+    shown_rows = [i for i in active if i["rank"] <= 5]
+    tier_labels = schema.get("tier_labels") or []
+    if schema.get("kind_tier"):
+        sections = []
+        for t in sorted({i["tier"] for i in shown_rows} | set(range(len(tier_labels)))):
+            label = tier_labels[t] if t < len(tier_labels) else f"Tier {t + 1}"
+            sections.append((label, [i for i in shown_rows if i["tier"] == t]))
+    else:
+        sections = [("Now", [i for i in shown_rows if i["rank"] <= 2]),
+                    ("Next", [i for i in shown_rows if i["rank"] >= 3])]
 
     lines = [BEGIN]
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -268,7 +286,10 @@ def build(kb, repo=None):
     if cap:
         n_active = sum(1 for i in active if i["status"] == "active")
         hdr += f" · active {n_active}/{cap}"
-    hdr += " · priority is a rank you state, 1-9)"
+    hdr += " · priority is a rank you state, 1-9"
+    if schema.get("kind_tier"):
+        hdr += ", within a tier"
+    hdr += ")"
     lines.append(hdr)
 
     owner, owner_label = wikilib.queue_owner(cfg.get("initiative_schema"))
@@ -276,26 +297,27 @@ def build(kb, repo=None):
     oa_text = wikilib.read(kb, f"open-asks/{owner}.md")
     oa_items = re.findall(r"(?m)^- (.+)$", oa_text)
     queue_total = len(waiting_owner) + len(oa_items)
-    lines.append(f"Waiting on {owner_label} ({queue_total}):")
+    oldest = ""
+    if schema.get("queue_dated"):
+        dates = [_iso(q["date"]) for q in wikilib.parse_queue(oa_text) if q["date"]]
+        dates = [d for d in dates if d]
+        if dates:
+            oldest = f", oldest {(today - min(dates)).days}d"
+    lines.append(f"Waiting on {owner_label} ({queue_total}{oldest}):")
     for i in waiting_owner:
         lines.append(f"- {i['slug']} · {i['ask']}")
     for line in oa_items:
         lines.append(f"- (open-asks/{owner}) {line}")
 
     shown = 0
-    lines.append("Now:")
-    for i in now_rows:
-        if shown >= MAX_ROWS:
-            break
-        lines.append(fmt_row(i, today))
-        shown += 1
-    lines.append("Next:")
-    for i in next_rows:
-        if shown >= MAX_ROWS:
-            break
-        lines.append(fmt_row(i, today))
-        shown += 1
-    remaining = len(now_rows) + len(next_rows) - shown
+    for label, rows in sections:
+        lines.append(f"{label}:")
+        for i in rows:
+            if shown >= MAX_ROWS:
+                break
+            lines.append(fmt_row(i, today))
+            shown += 1
+    remaining = len(shown_rows) - shown
     if remaining > 0:
         lines.append(f"+{remaining} more")
 
@@ -330,7 +352,7 @@ def build(kb, repo=None):
                 out.append(f"+{len(bound) - MAX_RESUME} more initiatives list {repo}")
             pointer = "\n".join(out)
         else:
-            for i in now_rows + next_rows:
+            for i in shown_rows:
                 if i["waiting_on"] != "none" or i["repos"]:
                     continue
                 pointer = (f"Where {repo} stands: #{i['rank']} {i['title']} → {i['next']}"

@@ -2553,6 +2553,115 @@ printf '{"session_id":"l5","tool_name":"Edit","tool_input":{"file_path":"%s/init
 assert "an index edit is not a log" "" "$(ev l5)"
 rm -rf "$(dirname "$SR")" "$OUTS"
 
+# ==== owner queue: tiers, dated line shape, agent-run expiry, post-compaction capture ====
+QW="$(mktemp -d)/wiki"
+mkdir -p "$QW"/{initiatives,open-asks,journal,archive}
+cat > "$QW/wiki.config.json" <<'EOF'
+{
+  "initiative_schema": {
+    "assignment_kind": ["pitch", "assigned", "self"],
+    "assignment_status": ["planning", "active", "review", "parked", "done"],
+    "waiting_on": ["none", "owner"],
+    "owner": "owner",
+    "kind_tier": {"pitch": 0, "assigned": 0, "self": 1},
+    "tier_labels": ["Assigned", "Own"],
+    "queue_dated": true, "queue_self_label": "self", "queue_self_expire_days": 60
+  }
+}
+EOF
+printf -- '---\ntype: index\ntitle: I\n---\n' > "$QW/initiatives/index.md"
+mkinit() { # mkinit slug kind status priority
+  printf -- '---\ntype: initiative\ntitle: %s\ntimestamp: 2026-10-01\nassignment_kind: %s\nassignment_status: %s\n%snext: n\nwaiting_on: none\n---\nb\n' \
+    "$1" "$2" "$3" "${4:+priority: $4
+}" > "$QW/initiatives/$1.md"
+}
+mkinit own-top self active 1
+mkinit given assigned active 3
+mkinit closed assigned done
+mkinit shelved self parked
+today=$(date +%F)
+cat > "$QW/open-asks/owner.md" <<EOF
+---
+type: open-asks
+title: q
+---
+
+- [ ] $today · Jo · keep: others' ask, no owner link
+- [ ] 2020-01-01 · Jo · drop: others' ask, owner done → [c](../initiatives/closed.md)
+- [ ] 2020-01-01 · Jo · keep: others' ask is never aged out
+- [ ] $today · self · drop: own, owner parked → [s](../initiatives/shelved.md)
+- [ ] 2020-01-01 · self · drop: own and stale
+- [ ] $today · self · keep: own, only an inline mention of [c](../initiatives/closed.md)
+- [x] $today · self · drop: checked off
+EOF
+git -C "$QW" init -q && git -C "$QW" add -A && git -C "$QW" -c user.name=t -c user.email=t@t commit -qm init
+
+echo "--- board.py: kind_tier puts an assigned rank-3 row above a self rank-1 row ---"
+b=$(python3 "$H/board.py" "$QW")
+assert_contains "tier sections are labelled" "Assigned:" "$b"
+first=$(printf '%s\n' "$b" | grep -m1 -E '^\d+\. |^[0-9]+\. ')
+assert_contains "the assigned row comes first" "given" "$first"
+assert_contains "the header says priority orders within a tier" "within a tier" "$b"
+assert_contains "the queue header carries the oldest age" "oldest " "$b"
+
+echo "--- queue-expire.py: archives by source, owner link and age; never asks ---"
+out=$(python3 "$H/queue-expire.py" "$QW" --dry-run)
+assert "dry run lists four" "4" "$(printf '%s\n' "$out" | grep -c 'drop:')"
+assert "dry run keeps every keep" "0" "$(printf '%s\n' "$out" | grep -c 'keep:')"
+python3 "$H/queue-expire.py" "$QW" >/dev/null
+assert "the queue keeps three" "3" "$(grep -c '^- ' "$QW/open-asks/owner.md")"
+assert_contains "archived items land in this month's archive with a reason" "_Archived: untouched" "$(cat "$QW/archive/$(date +%Y-%m).md")"
+
+echo "--- wikilib.parse_queue: owner links, case, tabs, fences ---"
+pq=$(python3 - "$H" <<'PY'
+import sys; sys.path.insert(0, sys.argv[1]); import wikilib
+t = ("- [X] 2026-01-01 · self · a [m](../initiatives/m.md) → [a](../initiatives/a.md), **[b](../initiatives/b.md#log)**\n"
+     "\tcontinued → [c](../initiatives/c.md)\n```\n- [ ] YYYY-MM-DD · who · example\n```\n")
+q = wikilib.parse_queue(t)
+print(len(q), q[0]["checked"], ",".join(q[0]["initiatives"]))
+PY
+)
+assert "one bullet, checked, owners after the last arrow only" "1 True c" "$pq"
+
+echo "--- queue-expire.py --commit skips when another session's archive edit is pending ---"
+printf -- '- [x] %s · self · done\n' "$today" >> "$QW/open-asks/owner.md"
+git -C "$QW" add -A && git -C "$QW" -c user.name=t -c user.email=t@t commit -qm addx
+pend="$QW/archive/$(date +%Y-%m).md"; [ -f "$pend" ] && mv "$pend" "$pend.keep"
+printf 'pending\n' > "$pend"
+python3 "$H/queue-expire.py" "$QW" --commit >/dev/null 2>&1
+assert "skip exits 3" "3" "$?"
+rm -f "$pend"; [ -f "$pend.keep" ] && mv "$pend.keep" "$pend"
+
+echo "--- initiative-check.py: an undated queue bullet fails the line-shape gate ---"
+printf -- '- [ ] no date here\n' >> "$QW/open-asks/owner.md"
+assert_contains "undated bullet fails" "line shape" "$(python3 "$H/initiative-check.py" "$QW" 2>&1)"
+
+echo "--- session-status.sh: compact/clear points at the earlier transcript; startup does not ---"
+TD="$(mktemp -d)"
+printf '%s\n' '{"type":"user","message":{"content":"<command-name>/clear</command-name>"}}' > "$TD/old.jsonl"
+sleep 1; touch "$TD/other.jsonl"; sleep 1; touch "$TD/new.jsonl"
+touch "$QW/KNOWLEDGE.md"
+cap=$(printf '{"source":"compact","transcript_path":"%s/new.jsonl"}' "$TD" | WIKI_ROOT="$QW" bash "$H/session-status.sh")
+assert_contains "compact points at its own transcript" "$TD/new.jsonl" "$cap"
+cap=$(printf '{"source":"clear","transcript_path":"%s/new.jsonl"}' "$TD" | WIKI_ROOT="$QW" bash "$H/session-status.sh")
+assert_contains "clear points at the previous transcript" "$TD/old.jsonl" "$cap"
+cap=$(printf '{"source":"startup","transcript_path":"%s/new.jsonl"}' "$TD" | WIKI_ROOT="$QW" bash "$H/session-status.sh")
+assert "startup adds no capture pointer" "" "$(printf '%s' "$cap" | grep -o 'just compacted')"
+cap=$(printf '{"source":"clear","transcript_path":"%s/new.jsonl"}' "$TD" | WIKI_ROOT="$QW" bash "$H/session-status.sh")
+assert "clear skips a newer sibling that never ran /clear" "" "$(printf '%s' "$cap" | grep -o "$TD/other.jsonl")"
+cap=$(sleep 3 | WIKI_ROOT="$QW" bash "$H/session-status.sh" >/dev/null; echo done)
+assert "an open stdin pipe does not hang session start" "done" "$cap"
+
+echo "--- user-turns.py: prints typed turns only ---"
+printf '%s\n' '{"type":"user","timestamp":"t1","message":{"content":"I want to post on LinkedIn"}}' \
+  '{"type":"user","message":{"content":[{"type":"tool_result","content":"x"}]}}' \
+  '{"type":"user","isCompactSummary":true,"message":{"content":"summary"}}' \
+  '{"type":"assistant","message":{"content":"hi"}}' > "$TD/t.jsonl"
+ut=$(python3 "$H/user-turns.py" "$TD/t.jsonl")
+assert_contains "the typed turn is printed" "LinkedIn" "$ut"
+assert "nothing else is printed" "1" "$(printf '%s\n' "$ut" | grep -c '^--- ')"
+rm -rf "$(dirname "$QW")" "$TD"
+
 echo
 echo "======================================"
 echo "  PASS=$pass  FAIL=$fail"

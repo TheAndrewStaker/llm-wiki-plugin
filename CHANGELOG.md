@@ -6,6 +6,18 @@ This project follows Keep a Changelog and intends to use Semantic Versioning aft
 
 ### Added
 
+- Tiers on the board (`initiative_schema.kind_tier`, `tier_labels`; off by default): rows group by
+  tier first, so a lower tier always outranks a higher one, and `priority` orders within a tier.
+- Dated owner queue (`queue_dated`): bullets in `open-asks/<owner>.md` must start
+  `- [ ] YYYY-MM-DD · <source> · `; the gate refuses others, and the board header shows the oldest age.
+- `hooks/queue-expire.py`: archives queue bullets without asking, at most once a day from the Stop
+  hook. Checked bullets go; others' asks go only when every owner initiative (linked after the last
+  `→`) is done; `queue_self_label` bullets also go when owners are parked or the bullet's date is
+  older than `queue_self_expire_days`. Each run is its own commit to `archive/<YYYY-MM>.md` plus a
+  journal line; it skips when those files have pending edits and rolls back a refused commit.
+- SessionStart reads its input: after a compaction, or a `/clear` (the transcript that ran it), it
+  points the agent at the earlier transcript and `hooks/user-turns.py`, which prints the user's typed
+  turns, so anything asked for only in chat gets filed.
 - Log guard (`log_guard` config, off by default): a PostToolUse recorder (`hooks/session-record.py`)
   notes each session's work events (a commit or PR command run outside the wiki; optionally any file
   write outside it) and log events (a write under `initiatives/` or `journal/`, `wiki-fm set`,
