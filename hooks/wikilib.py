@@ -373,7 +373,7 @@ def initiative_issues(schema, fm, prev_fm=None, active_count=None):
         m = re.search(rf"^{re.escape(field)}:[ \t]*(.*)$", fm, re.M)
         if not m:
             continue
-        val = m.group(1).strip()
+        val = re.sub(r"\s+#.*$", "", m.group(1)).strip()
         if val == "":
             if not re.search(rf"^{re.escape(field)}:[ \t]*\n(?:[ \t]+- .*\n?)+", fm + "\n", re.M):
                 out.append((field, "must be a list: [\"a\", \"b\"] or a block of '  - ' items"))
