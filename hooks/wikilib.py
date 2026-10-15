@@ -369,6 +369,17 @@ def initiative_issues(schema, fm, prev_fm=None, active_count=None):
         cap, val = schema.get(cap_key, 0), get(field)
         if cap and val and wc(val) > cap:
             out.append((field, f"{wc(val)}w > {cap}w cap"))
+    for field in schema.get("list_fields", []):
+        m = re.search(rf"^{re.escape(field)}:[ \t]*(.*)$", fm, re.M)
+        if not m:
+            continue
+        val = m.group(1).strip()
+        if val == "":
+            if not re.search(rf"^{re.escape(field)}:[ \t]*\n(?:[ \t]+- .*\n?)+", fm + "\n", re.M):
+                out.append((field, "must be a list: [\"a\", \"b\"] or a block of '  - ' items"))
+            continue
+        if not (val.startswith("[") and val.endswith("]")):
+            out.append((field, f"must be a list such as [\"{val.strip(chr(34))}\"], not a bare value"))
     if prev_fm is None:
         return out
     prev_status = frontmatter_value(prev_fm, "assignment_status") if prev_fm else None

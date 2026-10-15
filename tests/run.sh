@@ -2338,6 +2338,23 @@ assert_contains "the gate catches a done page that lost its verify" "cannot be r
 mk b done "~"
 assert_contains "a YAML null verify counts as removed" "cannot be removed" "$(python3 "$H/initiative-check.py" "$TW")"
 git -C "$TW" checkout -q -- initiatives/b.md
+echo "--- list_fields: a bare value in a list field is refused ---"
+cp "$TW/wiki.config.json" "$TW/wiki.config.json.bak"
+python3 - "$TW/wiki.config.json" <<'PY'
+import json,sys; p=sys.argv[1]; c=json.load(open(p)); c["initiative_schema"]["list_fields"]=["prs"]; json.dump(c,open(p,"w"))
+PY
+cp "$TW/initiatives/a.md" "$TW/a.md.bak"
+out=$($FM set "$TW/initiatives/a.md" prs=org/repo#2 2>&1); rc=$?
+assert "wiki-fm refuses a bare value in a list field" "1" "$rc"
+assert_contains "and names the list form" 'must be a list such as ["org/repo#2"]' "$out"
+$FM set "$TW/initiatives/a.md" 'prs=["org/repo#2"]' >/dev/null 2>&1
+assert "a flow list passes" "INIT-FAIL=0" "$(python3 "$H/initiative-check.py" "$TW" | tail -1)"
+printf -- '---\ntype: initiative\ntitle: c\ntimestamp: 2026-01-01\nassignment_kind: self\nassignment_status: planning\nnext: x\nwaiting_on: none\nprs:\n  - org/repo#3\n---\nbody\n' > "$TW/initiatives/c.md"
+git -C "$TW" add initiatives/c.md
+assert "a block list passes" "INIT-FAIL=0" "$(python3 "$H/initiative-check.py" "$TW" | tail -1)"
+printf -- '---\ntype: initiative\ntitle: c\ntimestamp: 2026-01-01\nassignment_kind: self\nassignment_status: planning\nnext: x\nwaiting_on: none\nprs: org/repo#3\n---\nbody\n' > "$TW/initiatives/c.md"
+assert_contains "the gate catches a bare value" "INIT-FAIL initiatives/c.md prs: must be a list" "$(python3 "$H/initiative-check.py" "$TW")"
+git -C "$TW" rm -q --cached initiatives/c.md; rm "$TW/initiatives/c.md"; mv "$TW/a.md.bak" "$TW/initiatives/a.md"; mv "$TW/wiki.config.json.bak" "$TW/wiki.config.json"
 mk c planning; git -C "$TW" add -A && git -C "$TW" commit -qm c >/dev/null 2>&1
 mk c active
 out=$(python3 "$H/initiative-check.py" "$TW")
