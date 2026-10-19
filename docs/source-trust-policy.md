@@ -15,7 +15,7 @@ For a local file (including a temporary file produced by a URL fetch), stage wit
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/hooks/stage-source.py" \
   --root "$WIKI_ROOT" --source "/local/file" \
-  --destination "sources/YYYY-MM-DD-slug.ext" --source-ref "https://origin.example/item"
+  --destination "sources/YYYY/MM/YYYY-MM-DD-slug.ext" --source-ref "https://origin.example/item"
 ```
 
 The tool copies without overwriting, verifies SHA-256, and appends one canonical record per
