@@ -46,9 +46,9 @@ try: d=(json.load(open(sys.argv[1])).get("signals") or {}).get("dir") or ""
 except Exception: d=""
 print(d.rstrip("/")+"/index.md" if d else "")' "$KB/wiki.config.json" 2>/dev/null)
   if [ -n "$sig_index" ]; then
-    python3 "$H/signals-board.py" "$KB" --write 2>/dev/null || true
+    python3 "$H/signals-board.py" "$KB" --write --index 2>/dev/null || true
     git -C "$KB" add "$sig_index" 2>/dev/null || true
-    python3 "$H/signals-board.py" "$KB" --check >&2 || true
+    python3 "$H/signals-board.py" "$KB" --check --index >&2 || true
   fi
 fi
 

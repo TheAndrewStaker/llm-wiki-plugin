@@ -161,16 +161,32 @@ fi
 if [ -n "${ic:-}" ] && [ "$ic" -gt 0 ]; then
   echo "${R}FAIL${Z} (initiative schema violations -- see INIT-FAIL lines above)"; exit 1
 fi
-# A configured content dir that git ignores loses every page in it from history and from lint
-# (both iterate tracked files), with no other signal.
+# A page (a .md carrying type:) inside a configured content dir that git ignores is never
+# committed or linted (both iterate tracked files), with no other signal.
 if git -C "$KB" rev-parse --git-dir >/dev/null 2>&1; then
-  ignored_dirs=$(python3 -c 'import json,sys
-try: print("\n".join(json.load(open(sys.argv[1])).get("content_dirs") or []))
-except Exception: pass' "$KB/wiki.config.json" 2>/dev/null | while IFS= read -r d; do
-    [ -n "$d" ] && git -C "$KB" check-ignore -q "${d%/}/probe.md" && printf ' %s' "$d"
-  done)
-  if [ -n "$ignored_dirs" ]; then
-    echo "${R}FAIL${Z} (content_dirs ignored by git, so their pages are never committed or linted:$ignored_dirs)"; exit 1
+  ignored_pages=$(python3 - "$KB" <<'PY'
+import json, os, re, subprocess, sys
+kb = sys.argv[1]
+try:
+    dirs = json.load(open(os.path.join(kb, "wiki.config.json"))).get("content_dirs") or []
+except Exception:
+    dirs = []
+if dirs:
+    out = subprocess.run(["git", "ls-files", "-z", "--others", "--ignored", "--exclude-standard",
+                          "--", *dirs], cwd=kb, capture_output=True, text=True).stdout
+    for rel in sorted(f for f in out.split("\0") if f.endswith(".md")):
+        try:
+            head = open(os.path.join(kb, rel), encoding="utf-8").read(4096)
+        except OSError:
+            continue
+        m = re.match(r"^---\n(.*?)\n---", head, re.S)
+        if m and re.search(r"^type:\s*\S", m.group(1), re.M):
+            print(rel)
+PY
+)
+  if [ -n "$ignored_pages" ]; then
+    printf '%s\n' "$ignored_pages" | sed 's/^/  IGNORED-PAGE /'
+    echo "${R}FAIL${Z} (wiki pages in content_dirs are gitignored, so they are never committed or linted)"; exit 1
   fi
 fi
 budget_report=$(python3 - "$KB" "${orp:--1}" "${islands:--1}" "${ml:--1}" "${col:--1}" "${unx:--1}" "${de:--1}" "${em:--1}" "${ig:--1}" "${rs:--1}" "${mla:--1}" <<'PY'

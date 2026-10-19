@@ -2679,13 +2679,18 @@ assert_contains "the typed turn is printed" "LinkedIn" "$ut"
 assert "nothing else is printed" "1" "$(printf '%s\n' "$ut" | grep -c '^--- ')"
 rm -rf "$(dirname "$QW")" "$TD"
 
-echo "--- lint.sh: a gitignored content dir fails the gate ---"
+echo "--- lint.sh: a gitignored wiki page in a content dir fails the gate ---"
 GW="$(mktemp -d)/wiki"; mkdir -p "$GW/notes"; git -C "$GW" init -q
 printf '/*\n!/.gitignore\n!/wiki.config.json\n' > "$GW/.gitignore"
 printf '{"content_dirs": ["notes/"]}\n' > "$GW/wiki.config.json"
+printf -- '---\ntype: notes\ntitle: Lost\n---\nbody\n' > "$GW/notes/lost.md"
 gout=$(bash "$H/lint.sh" "$GW" 2>&1); grc=$?
-assert "ignored content dir exits 1" "1" "$grc"
-assert_contains "ignored content dir is named" "content_dirs ignored by git" "$gout"
+assert "ignored page exits 1" "1" "$grc"
+assert_contains "ignored page is named" "IGNORED-PAGE notes/lost.md" "$gout"
+printf 'notes/*\n!notes/*.notes.md\n!notes/index.md\n' > "$GW/.gitignore"
+mv "$GW/notes/lost.md" "$GW/notes/kept.notes.md"; printf 'scratch\n' > "$GW/notes/scratch.md"
+gout=$(bash "$H/lint.sh" "$GW" 2>&1)
+assert "a filename allowlist with only non-page files ignored passes the gate" "" "$(printf '%s' "$gout" | grep IGNORED-PAGE)"
 rm -rf "$(dirname "$GW")"
 
 echo "--- signals-board.py: generated index, due lines, vocabulary check ---"
@@ -2742,6 +2747,13 @@ assert_contains "unknown relevance is flagged" "relevance 'sideways'" "$chk"
 assert_contains "an open signal with no date is flagged" "story-b.md: open signal has neither next_expected nor recheck" "$chk"
 assert_contains "find matches an alias across punctuation" "signals/rule-a.md" "$(python3 "$H/signals-board.py" "$SW" --find "rule a")"
 python3 "$H/signals-board.py" "$SW" --find "no-such-thing" >/dev/null; assert "find exits 1 with no match" "1" "$?"
+printf -- '---\ntype: signal\ntitle: Other\nkind: rule\nstatus: proposed\nrelevance: direct\nrecheck: 2030-02-01\naliases: [REG-1234]\n---\n' > "$SW/signals/other.md"
+assert "find never matches an identifier prefix" "" "$(python3 "$H/signals-board.py" "$SW" --find "REG-123")"
+assert_contains "find matches the full identifier" "signals/other.md" "$(python3 "$H/signals-board.py" "$SW" --find "reg 1234")"
+git -C "$SW" init -q; git -C "$SW" add signals/index.md signals/rule-a.md
+idxout=$(python3 "$H/signals-board.py" "$SW" --index)
+assert_contains "index mode lists a staged signal" "rule-a.md" "$idxout"
+assert "index mode skips an unstaged signal" "" "$(printf '%s' "$idxout" | grep other.md)"
 assert "no config means no output" "" "$(python3 "$H/signals-board.py" "$W" --due 2>&1)"
 rm -rf "$(dirname "$SW")"
 

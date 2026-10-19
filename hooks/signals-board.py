@@ -22,13 +22,16 @@ Usage:
   signals-board.py [WIKI_ROOT] --write    replace the marked block in <dir>/index.md
   signals-board.py [WIKI_ROOT] --due      session-start lines for dates within warn_days
   signals-board.py [WIKI_ROOT] --check    field and vocabulary issues, one per line
-  signals-board.py [WIKI_ROOT] --find ID  signals whose slug, title or an alias contains ID
+  signals-board.py [WIKI_ROOT] --find ID  signals whose slug, title or an alias equals ID
                                           (case- and punctuation-insensitive); exit 1 if none
+  --index                                 read pages from the git index, not the working tree
+                                          (pre-commit: the table matches what is committed)
 """
 import argparse
 import datetime
 import os
 import re
+import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -57,19 +60,33 @@ def date_or_none(value):
     return None
 
 
-def load_pages(kb, cfg):
+def page_texts(kb, cfg, from_index=False):
+    if from_index:
+        out = subprocess.run(["git", "ls-files", "-z", "--", cfg["dir"]], cwd=kb,
+                             capture_output=True, text=True).stdout
+        for rel in sorted(f for f in out.split("\0") if f):
+            if "/" in rel[len(cfg["dir"]):] or not rel.endswith(".md"):
+                continue
+            r = subprocess.run(["git", "show", f":{rel}"], cwd=kb, capture_output=True, text=True)
+            if r.returncode == 0:
+                yield os.path.basename(rel), r.stdout
+        return
     root = os.path.join(kb, cfg["dir"])
-    pages = []
     if not os.path.isdir(root):
-        return pages
+        return
     for f in sorted(os.listdir(root)):
-        if not f.endswith(".md") or f == "index.md":
+        if not f.endswith(".md"):
             continue
         try:
-            text = open(os.path.join(root, f), encoding="utf-8").read()
+            yield f, open(os.path.join(root, f), encoding="utf-8").read()
         except OSError:
             continue
-        if not wikilib.fm_block(text):
+
+
+def load_pages(kb, cfg, from_index=False):
+    pages = []
+    for f, text in page_texts(kb, cfg, from_index):
+        if f == "index.md" or not wikilib.fm_block(text):
             continue
         get = lambda k: (wikilib.frontmatter_value(text, k) or "").strip().strip("'\"")
         if get("type") != "signal":
@@ -196,7 +213,7 @@ def find(pages, term):
     if not key:
         return []
     return [p for p in pages
-            if any(key in norm(name) for name in [p["file"][:-3], p["title"], *p["aliases"]])]
+            if any(key == norm(name) for name in [p["file"][:-3], p["title"], *p["aliases"]])]
 
 
 def main():
@@ -208,12 +225,13 @@ def main():
     mode.add_argument("--check", action="store_true")
     mode.add_argument("--find", metavar="ID")
     ap.add_argument("--today")
+    ap.add_argument("--index", action="store_true")
     args = ap.parse_args()
     kb = wikilib.resolve_root(args.root)
     cfg = config(kb)
     if cfg is None:
         return 0
-    pages = load_pages(kb, cfg)
+    pages = load_pages(kb, cfg, from_index=args.index)
     if args.due:
         today = datetime.date.fromisoformat(args.today) if args.today else None
         for line in due_lines(pages, cfg, today):
