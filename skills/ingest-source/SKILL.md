@@ -49,13 +49,19 @@ wiki configures `signals` in `wiki.config.json` (its `dir`, `kinds` with per-kin
   entity page as a dated line; a one-off opinion goes to the concept page for its theme. Do not
   force a signal for something that has no next event.
 - **Find before creating.** Pull every identifier from the source (document IDs for each stage,
-  docket, RIN, bill number, statute section, popular name) and run `wiki-query` on each. A match in
-  a signal's `aliases:` is the same storyline: append to it. Name new pages by storyline, not by a
+  docket, RIN, bill number, statute section, popular name) and run
+  `python3 hooks/signals-board.py --find <id>` on each (exact match on slug, title and `aliases:`,
+  ignoring case and punctuation; exit 1 means no match), then `wiki-query` for looser context. A
+  `--find` hit is the same storyline: append to it. Name new pages by storyline, not by a
   stage's document ID (a proposed rule's ID changes when it is finalized).
 - **Shape.** Start from `templates/signal.md`. `kind` and `status` come from the configured
   vocabularies. Every open signal carries a machine date: `next_expected` (with
   `next_expected_what`) when the next event is dated, else `recheck`; session start surfaces both
   when near, so a hand-written date never goes stale silently. Add every identifier to `aliases:`.
+  `status` is the latest stage reached; a later phase (a model that starts in two years) goes in
+  `next_expected`, not in the status. For news with no scheduled follow-up, set `recheck` to when
+  more news is plausible (about 30 days by default) and close the signal with a closed status at
+  that recheck if nothing moved, rather than rolling the date forward.
 - **Log, newest first.** One dated entry per source in the page's `## Log`. A **primary document**
   (rule text, filing, report) also gets a `notes/` page with `as_of:` set to its event date
   (`timestamp:` stays record time, as everywhere); a **secondary article** is a log line with its
@@ -67,6 +73,10 @@ wiki configures `signals` in `wiki.config.json` (its `dir`, `kinds` with per-kin
 - **The index is generated.** `hooks/signals-board.py` rewrites the block in `<dir>/index.md` at
   commit, sorted by the nearest date; never hand-edit that table. `--check` reports vocabulary and
   missing-date issues.
+- **Stage the bytes, not a summary.** Fetch a public primary document with a plain HTTP download
+  into a temporary file and stage that; a fetch tool that returns a model summary is not a source.
+  When the source is blocked (paywall, 403), say so on the page, mark its facts reported from the
+  headline or post, and keep relevance conservative.
 - **Follow linked primary sources once.** A press release that points to a fact sheet or rule text
   is usually the thin layer; fetch and stage the next layer when it is public.
 

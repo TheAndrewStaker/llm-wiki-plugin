@@ -22,6 +22,8 @@ Usage:
   signals-board.py [WIKI_ROOT] --write    replace the marked block in <dir>/index.md
   signals-board.py [WIKI_ROOT] --due      session-start lines for dates within warn_days
   signals-board.py [WIKI_ROOT] --check    field and vocabulary issues, one per line
+  signals-board.py [WIKI_ROOT] --find ID  signals whose slug, title or an alias contains ID
+                                          (case- and punctuation-insensitive); exit 1 if none
 """
 import argparse
 import datetime
@@ -82,6 +84,7 @@ def load_pages(kb, cfg):
             "next_what": get("next_expected_what"),
             "recheck": get("recheck"),
             "last_event": get("last_event"),
+            "aliases": wikilib.frontmatter_values(text, "aliases"),
         })
     return pages
 
@@ -184,6 +187,18 @@ def due_lines(pages, cfg, today=None):
     return out
 
 
+def norm(text):
+    return re.sub(r"[^a-z0-9]", "", (text or "").lower())
+
+
+def find(pages, term):
+    key = norm(term)
+    if not key:
+        return []
+    return [p for p in pages
+            if any(key in norm(name) for name in [p["file"][:-3], p["title"], *p["aliases"]])]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("root", nargs="?")
@@ -191,6 +206,7 @@ def main():
     mode.add_argument("--write", action="store_true")
     mode.add_argument("--due", action="store_true")
     mode.add_argument("--check", action="store_true")
+    mode.add_argument("--find", metavar="ID")
     ap.add_argument("--today")
     args = ap.parse_args()
     kb = wikilib.resolve_root(args.root)
@@ -203,6 +219,11 @@ def main():
         for line in due_lines(pages, cfg, today):
             print(line)
         return 0
+    if args.find is not None:
+        hits = find(pages, args.find)
+        for p in hits:
+            print(f"{os.path.join(cfg['dir'], p['file'])}\t{p['status']}\t{p['title']}")
+        return 0 if hits else 1
     if args.check:
         found = issues(pages, cfg)
         for line in found:

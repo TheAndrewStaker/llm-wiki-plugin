@@ -2679,6 +2679,15 @@ assert_contains "the typed turn is printed" "LinkedIn" "$ut"
 assert "nothing else is printed" "1" "$(printf '%s\n' "$ut" | grep -c '^--- ')"
 rm -rf "$(dirname "$QW")" "$TD"
 
+echo "--- lint.sh: a gitignored content dir fails the gate ---"
+GW="$(mktemp -d)/wiki"; mkdir -p "$GW/notes"; git -C "$GW" init -q
+printf '/*\n!/.gitignore\n!/wiki.config.json\n' > "$GW/.gitignore"
+printf '{"content_dirs": ["notes/"]}\n' > "$GW/wiki.config.json"
+gout=$(bash "$H/lint.sh" "$GW" 2>&1); grc=$?
+assert "ignored content dir exits 1" "1" "$grc"
+assert_contains "ignored content dir is named" "content_dirs ignored by git" "$gout"
+rm -rf "$(dirname "$GW")"
+
 echo "--- signals-board.py: generated index, due lines, vocabulary check ---"
 SW="$(mktemp -d)/wiki"; mkdir -p "$SW/signals"
 cat > "$SW/wiki.config.json" <<'EOF2'
@@ -2731,6 +2740,8 @@ assert "check exits nonzero on issues" "1" "$rc"
 assert_contains "status outside the kind's vocabulary is flagged" "status 'final' not allowed for kind 'market'" "$chk"
 assert_contains "unknown relevance is flagged" "relevance 'sideways'" "$chk"
 assert_contains "an open signal with no date is flagged" "story-b.md: open signal has neither next_expected nor recheck" "$chk"
+assert_contains "find matches an alias across punctuation" "signals/rule-a.md" "$(python3 "$H/signals-board.py" "$SW" --find "rule a")"
+python3 "$H/signals-board.py" "$SW" --find "no-such-thing" >/dev/null; assert "find exits 1 with no match" "1" "$?"
 assert "no config means no output" "" "$(python3 "$H/signals-board.py" "$W" --due 2>&1)"
 rm -rf "$(dirname "$SW")"
 

@@ -161,6 +161,18 @@ fi
 if [ -n "${ic:-}" ] && [ "$ic" -gt 0 ]; then
   echo "${R}FAIL${Z} (initiative schema violations -- see INIT-FAIL lines above)"; exit 1
 fi
+# A configured content dir that git ignores loses every page in it from history and from lint
+# (both iterate tracked files), with no other signal.
+if git -C "$KB" rev-parse --git-dir >/dev/null 2>&1; then
+  ignored_dirs=$(python3 -c 'import json,sys
+try: print("\n".join(json.load(open(sys.argv[1])).get("content_dirs") or []))
+except Exception: pass' "$KB/wiki.config.json" 2>/dev/null | while IFS= read -r d; do
+    [ -n "$d" ] && git -C "$KB" check-ignore -q "${d%/}/probe.md" && printf ' %s' "$d"
+  done)
+  if [ -n "$ignored_dirs" ]; then
+    echo "${R}FAIL${Z} (content_dirs ignored by git, so their pages are never committed or linted:$ignored_dirs)"; exit 1
+  fi
+fi
 budget_report=$(python3 - "$KB" "${orp:--1}" "${islands:--1}" "${ml:--1}" "${col:--1}" "${unx:--1}" "${de:--1}" "${em:--1}" "${ig:--1}" "${rs:--1}" "${mla:--1}" <<'PY'
 import json, os, sys
 root, values = sys.argv[1], sys.argv[2:]
