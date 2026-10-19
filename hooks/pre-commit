@@ -39,6 +39,19 @@ if [ -f "$H/board.py" ] && command -v python3 >/dev/null 2>&1; then
   git -C "$KB" add STATE.md 2>/dev/null || true
 fi
 
+# Signals index: regenerated from signal frontmatter when wiki.config.json configures "signals".
+if [ -f "$H/signals-board.py" ] && command -v python3 >/dev/null 2>&1; then
+  sig_index=$(python3 -c 'import json,sys
+try: d=(json.load(open(sys.argv[1])).get("signals") or {}).get("dir") or ""
+except Exception: d=""
+print(d.rstrip("/")+"/index.md" if d else "")' "$KB/wiki.config.json" 2>/dev/null)
+  if [ -n "$sig_index" ]; then
+    python3 "$H/signals-board.py" "$KB" --write 2>/dev/null || true
+    git -C "$KB" add "$sig_index" 2>/dev/null || true
+    python3 "$H/signals-board.py" "$KB" --check >&2 || true
+  fi
+fi
+
 # WIKI_CHECK_INDEX: the initiative gate judges the staged version, so a page an
 # auto-commit holds back does not block the files it does commit.
 WIKI_CHECK_INDEX=1 "$H/lint.sh" "$KB"

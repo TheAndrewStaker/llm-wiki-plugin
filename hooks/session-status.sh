@@ -320,6 +320,12 @@ PY
   fi
 fi
 
+# 3b. Signals (external developments) whose next_expected or recheck date is near or past.
+if [ -f "$H/signals-board.py" ] && command -v python3 >/dev/null 2>&1; then
+  sig=$(python3 "$H/signals-board.py" "$KB" --due 2>/dev/null || true)
+  [ -n "$sig" ] && ctx+="$sig"$'\n\n'
+fi
+
 # 4. Org/personal drop-ins (e.g. an assignment injector). Each prints raw context to stdout.
 if [ -d "$KB/status.d" ]; then
   for s in "$KB"/status.d/*.sh; do

@@ -3,7 +3,7 @@ name: ingest-source
 description: >-
   Ingest a non-transcript source (web article, PDF, blog post, news or regulatory update, or a
   book read chapter-by-chapter) into the wiki: stage it in sources/, discuss takeaways, write/update a
-  synthesis page, update the index, tracker + linked pages, file any decisions, and cross-link. Use when
+  synthesis page, update the index, signal + linked pages, file any decisions, and cross-link. Use when
   the user drops a source in (or gives a URL/path) and wants it processed into the knowledge
   base. For meeting transcripts (.vtt) use the meeting-notes skill instead.
 ---
@@ -41,23 +41,37 @@ Resolve the wiki root from `$CLAUDE_PLUGIN_OPTION_WIKI_ROOT` / `$WIKI_ROOT` / `~
   returning only the summary (context isolation).
 
 ## Step 2b — Event sources (news, regulation, announcements)
-A source that reports a dated development (a proposed or final rule, a statute, a court ruling, a
-product or market announcement) is one step in a story that will move again. File it so later steps
-extend it instead of starting over:
-- **One notes page per document.** Set `as_of:` to the event date (the publication or issue date),
-  never `timestamp:` (record time). Separate the source's own claims from anything inferred, and say
-  when the primary document (rule text, filing) was not yet available.
-- **One tracker row per development.** Find the wiki's tracker: a `type: map` page tagged `tracker`
-  (`wiki-query tracker`), or the one the schema file names. Upsert the development's row: status,
-  next expected event with its date, relevance, and a link to the new notes page. A later document
-  about the same development updates the row and adds a notes page; it never opens a second row.
-  Point the notes page back with `tracker:` in frontmatter. No tracker yet and the source is the
-  first of a stream: propose creating one rather than leaving the story unanchored.
-- **Relevance is a section, not an aside.** End the notes page with what the development changes for
-  the wiki's own subject (its data, products, or work), each claim marked confirmed or inferred and
-  linked to the page that grounds it. If nothing changes, say so in one line.
+A source that reports a dated development is one step in a story that will move again. When the
+wiki configures `signals` in `wiki.config.json` (its `dir`, `kinds` with per-kind statuses,
+`relevance`, `closed`), file it so later steps extend the story instead of starting over:
+- **Route by lifecycle.** A development with a lifecycle (a rule, statute, lawsuit, recurring
+  report, multi-step market story) is a **signal page**. News about one company goes to that
+  entity page as a dated line; a one-off opinion goes to the concept page for its theme. Do not
+  force a signal for something that has no next event.
+- **Find before creating.** Pull every identifier from the source (document IDs for each stage,
+  docket, RIN, bill number, statute section, popular name) and run `wiki-query` on each. A match in
+  a signal's `aliases:` is the same storyline: append to it. Name new pages by storyline, not by a
+  stage's document ID (a proposed rule's ID changes when it is finalized).
+- **Shape.** Start from `templates/signal.md`. `kind` and `status` come from the configured
+  vocabularies. Every open signal carries a machine date: `next_expected` (with
+  `next_expected_what`) when the next event is dated, else `recheck`; session start surfaces both
+  when near, so a hand-written date never goes stale silently. Add every identifier to `aliases:`.
+- **Log, newest first.** One dated entry per source in the page's `## Log`. A **primary document**
+  (rule text, filing, report) also gets a `notes/` page with `as_of:` set to its event date
+  (`timestamp:` stays record time, as everywhere); a **secondary article** is a log line with its
+  staged source and no notes page. Update `status`, `last_event` and the date fields in the same
+  edit (`wiki-fm set` writes frontmatter atomically).
+- **Relevance cites owners.** "What it means for us" marks each claim with the wiki's own confidence
+  vocabulary and links the page that owns the fact (an entity or concept page with its survey
+  date), not a code path nothing watches. Restate it when the status moves.
+- **The index is generated.** `hooks/signals-board.py` rewrites the block in `<dir>/index.md` at
+  commit, sorted by the nearest date; never hand-edit that table. `--check` reports vocabulary and
+  missing-date issues.
 - **Follow linked primary sources once.** A press release that points to a fact sheet or rule text
   is usually the thin layer; fetch and stage the next layer when it is public.
+
+No `signals` config: write the notes page with `as_of:` and propose configuring signals if the
+source is the first of a stream.
 
 ## Step 3 — Weight-conditional involvement (contract step 2)
 - **Heavy source** → interactive: surface takeaways, let the user steer emphasis before writing.
