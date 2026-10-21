@@ -828,6 +828,11 @@ assert "a source outside the bundle gets no sources entry" "0" "$(printf '%s' "$
 assert "the legacy synthesized_from line is kept" "1" "$(printf '%s' "$trust" | grep -c '^synthesized_from:')"
 assert_contains "the supersede marker maps to deprecated" "status: deprecated" "$trust"
 assert_contains "stale_after gains an offset" "stale_after: 2026-12-31T12:00:00+00:00" "$trust"
+printf '{"okf": {"generated_by": "wiki-export"}}\n' > "$OKF_WIKI/wiki.config.json"
+python3 "$ROOT/bin/wiki-okf" export "$OKF_WIKI" "$OKF_OUT" --force >/dev/null
+plugin_ver=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$ROOT/.claude-plugin/plugin.json")
+assert_contains "a bare producer gains the plugin version" "by: wiki-export/$plugin_ver" "$(cat "$OKF_OUT/concepts/trust.md")"
+printf '{"okf": {"generated_by": "wiki-export/0.1.0", "verifier": "human:owner"}}\n' > "$OKF_WIKI/wiki.config.json"
 assert "a page without a producer config gets no generated block" "0" "$(grep -c '^generated:' "$OKF_OUT/concepts/exported.md")"
 printf '%s\n' '---' 'type: concept' 'title: Bad status' 'status: retired' '---' 'x' > "$OKF_OUT/concepts/badstatus.md"
 okf_bad=$(python3 "$ROOT/bin/wiki-okf" validate "$OKF_OUT" 2>&1); rc=$?
@@ -944,6 +949,24 @@ assert_contains "quoted colon-hash value is not TITLECOLON" "titlecolon=0" "$por
 assert_contains "blank line before block list is a valid list" "nonlist=0" "$port_machine"
 bash "$H/lint.sh" "$PORT_W" >/dev/null 2>&1; rc=$?
 assert "dup-key/tab hard gate fails lint" "1" "$rc"
+
+echo "--- status: is OKF's lifecycle enum; other values are flagged, a budget gates them ---"
+STAT_W="$(mktemp -d)/wiki"
+mkdir -p "$STAT_W/concepts"
+printf '%s\n' '---' 'type: concept' 'title: Free' 'status: "EXECUTED, see log"' '---' 'body' > "$STAT_W/concepts/free.md"
+printf '%s\n' '---' 'type: concept' 'title: Enum' 'status: draft' '---' 'body' > "$STAT_W/concepts/enum.md"
+git -C "$STAT_W" init -q && git -C "$STAT_W" add -A
+stat_port=$(python3 "$H/frontmatter-portability.py" "$STAT_W")
+assert_contains "a free-text status is flagged" "PORT-STATUS concepts/free.md" "$stat_port"
+assert "an enum status is not flagged" "0" "$(printf '%s\n' "$stat_port" | grep -c 'PORT-STATUS concepts/enum.md')"
+assert_contains "machine line counts it" "status=1" "$(printf '%s\n' "$stat_port" | tail -1)"
+bash "$H/lint.sh" "$STAT_W" >/dev/null 2>&1; rc=$?
+assert "without a budget it stays advisory" "0" "$rc"
+printf '{"advisory_budgets":{"okf_status":0}}\n' > "$STAT_W/wiki.config.json"
+stat_lint=$(bash "$H/lint.sh" "$STAT_W" 2>&1); rc=$?
+assert "advisory_budgets.okf_status gates it" "1" "$rc"
+assert_contains "the gate names the page" "PORT-STATUS concepts/free.md" "$stat_lint"
+rm -rf "$(dirname "$STAT_W")"
 
 echo "--- description length is an outlier guard, not a house style ---"
 # The description is indexed at 2x weight, so a threshold set inside a healthy corpus's
@@ -2706,7 +2729,7 @@ cat > "$SW/signals/rule-a.md" <<'EOF2'
 type: signal
 title: Rule A
 kind: rule
-status: proposed
+stage: proposed
 relevance: direct
 next_expected: 2030-01-10
 next_expected_what: "comment period closes"
@@ -2718,7 +2741,7 @@ cat > "$SW/signals/story-b.md" <<'EOF2'
 type: signal
 title: Story B
 kind: market
-status: final
+stage: final
 relevance: sideways
 ---
 EOF2
@@ -2727,7 +2750,7 @@ cat > "$SW/signals/rule-c.md" <<'EOF2'
 type: signal
 title: Rule C
 kind: rule
-status: effective
+stage: effective
 relevance: adjacent
 last_event: 2029-06-01
 ---
@@ -2735,19 +2758,19 @@ EOF2
 python3 "$H/signals-board.py" "$SW" --write
 idx=$(cat "$SW/signals/index.md")
 assert_contains "open table lists an open signal" "[Rule A](rule-a.md)" "$idx"
-assert_contains "closed section lists a closed-status signal" "| [Rule C](rule-c.md) | rule | effective | 2029-06-01 |" "$idx"
+assert_contains "closed section lists a closed-stage signal" "| [Rule C](rule-c.md) | rule | effective | 2029-06-01 |" "$idx"
 assert_contains "open count excludes closed" "## Open (2)" "$idx"
 due=$(python3 "$H/signals-board.py" "$SW" --due --today 2030-01-05)
 assert_contains "a date inside warn_days surfaces" "Signal [rule-a] in 5d (2030-01-10): comment period closes" "$due"
 assert "a closed signal never surfaces" "" "$(printf '%s' "$due" | grep rule-c)"
 chk=$(python3 "$H/signals-board.py" "$SW" --check); rc=$?
 assert "check exits nonzero on issues" "1" "$rc"
-assert_contains "status outside the kind's vocabulary is flagged" "status 'final' not allowed for kind 'market'" "$chk"
+assert_contains "stage outside the kind's vocabulary is flagged" "stage 'final' not allowed for kind 'market'" "$chk"
 assert_contains "unknown relevance is flagged" "relevance 'sideways'" "$chk"
 assert_contains "an open signal with no date is flagged" "story-b.md: open signal has neither next_expected nor recheck" "$chk"
 assert_contains "find matches an alias across punctuation" "signals/rule-a.md" "$(python3 "$H/signals-board.py" "$SW" --find "rule a")"
 python3 "$H/signals-board.py" "$SW" --find "no-such-thing" >/dev/null; assert "find exits 1 with no match" "1" "$?"
-printf -- '---\ntype: signal\ntitle: Other\nkind: rule\nstatus: proposed\nrelevance: direct\nrecheck: 2030-02-01\naliases: [REG-1234]\n---\n' > "$SW/signals/other.md"
+printf -- '---\ntype: signal\ntitle: Other\nkind: rule\nstage: proposed\nrelevance: direct\nrecheck: 2030-02-01\naliases: [REG-1234]\n---\n' > "$SW/signals/other.md"
 assert "find never matches an identifier prefix" "" "$(python3 "$H/signals-board.py" "$SW" --find "REG-123")"
 assert_contains "find matches the full identifier" "signals/other.md" "$(python3 "$H/signals-board.py" "$SW" --find "reg 1234")"
 git -C "$SW" init -q; git -C "$SW" add signals/index.md signals/rule-a.md

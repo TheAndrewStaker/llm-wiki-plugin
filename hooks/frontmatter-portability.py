@@ -25,6 +25,8 @@ Checks (frontmatter block only, per tracked page):
               never truncate it.
   TITLECOLON  unquoted title:/description: containing ": " -- parses as a nested
               mapping or errors, silently breaking the page's whole frontmatter
+  STATUS      status: outside OKF's draft|stable|deprecated; OKF reserves the key, so a
+              free-text value misreads as a lifecycle state in any OKF consumer
 
 Bare ISO dates (timestamp: 2026-07-16) are deliberately NOT flagged: they are the
 wiki's own convention; 1.1 parsers see a date object and 1.2 a string, but both
@@ -33,7 +35,7 @@ round-trip the same text and the lint/catalog layer only ever compares text.
 Advisory only, always exits 0; lint.sh decides the gate. Standalone:
     python3 hooks/frontmatter-portability.py [WIKI_ROOT]
 Ends with a machine line:
-    PORT dupkey=<n> tab=<n> ambig=<n> singular=<n> nonlist=<n> desc=<n> titlecolon=<n>
+    PORT dupkey=<n> tab=<n> ambig=<n> singular=<n> nonlist=<n> desc=<n> titlecolon=<n> status=<n>
 """
 import os
 import re
@@ -53,9 +55,10 @@ quoted = re.compile(r"""^(['"]).*\1$""")
 ambig_word = {"yes", "no", "on", "off"}
 sexagesimal = re.compile(r"^\d+:\d+(:\d+)*$")
 folded = re.compile(r"^[>|][+-]?\d*$")
+OKF_STATUS = {"draft", "stable", "deprecated"}
 PLURAL = {"tag": "tags", "alias": "aliases", "cssclass": "cssclasses"}
 
-dupkey = tab = ambig = singular = nonlist = desc = titlecolon = 0
+dupkey = tab = ambig = singular = nonlist = desc = titlecolon = status = 0
 issues = []
 
 
@@ -117,6 +120,10 @@ for f in files:
         if key in ("title", "description") and val and not quoted.match(val) and ": " in val:
             flag("TITLECOLON", f, f"unquoted '{key}:' contains ': ' -- breaks the whole frontmatter in strict parsers; quote the value")
             titlecolon += 1
+        if key == "status" and val.strip("'\"") not in OKF_STATUS:
+            flag("STATUS", f, f"'status: {val[:40]}' is not draft|stable|deprecated; OKF reserves "
+                              "this key, so rename a wiki-specific state to another key")
+            status += 1
         if key == "description":
             if not val or folded.match(val):
                 flag("DESC", f, "description is folded/multiline; line-based catalogs and agents scanning frontmatter see it as empty -- make it one plain line")
@@ -130,4 +137,4 @@ for f in files:
 for line in issues:
     print(line)
 print(f"PORT dupkey={dupkey} tab={tab} ambig={ambig} singular={singular} "
-      f"nonlist={nonlist} desc={desc} titlecolon={titlecolon}")
+      f"nonlist={nonlist} desc={desc} titlecolon={titlecolon} status={status}")

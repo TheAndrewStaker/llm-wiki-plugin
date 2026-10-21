@@ -42,7 +42,7 @@ Resolve the wiki root from `$CLAUDE_PLUGIN_OPTION_WIKI_ROOT` / `$WIKI_ROOT` / `~
 
 ## Step 2b — Event sources (news, regulation, announcements)
 A source that reports a dated development is one step in a story that will move again. When the
-wiki configures `signals` in `wiki.config.json` (its `dir`, `kinds` with per-kind statuses,
+wiki configures `signals` in `wiki.config.json` (its `dir`, `kinds` with per-kind stages,
 `relevance`, `closed`), file it so later steps extend the story instead of starting over:
 - **Route by lifecycle.** A development with a lifecycle (a rule, statute, lawsuit, recurring
   report, multi-step market story) is a **signal page**. News about one company goes to that
@@ -54,22 +54,22 @@ wiki configures `signals` in `wiki.config.json` (its `dir`, `kinds` with per-kin
   ignoring case and punctuation; exit 1 means no match), then `wiki-query` for looser context. A
   `--find` hit is the same storyline: append to it. Name new pages by storyline, not by a
   stage's document ID (a proposed rule's ID changes when it is finalized).
-- **Shape.** Start from `templates/signal.md`. `kind` and `status` come from the configured
+- **Shape.** Start from `templates/signal.md`. `kind` and `stage` come from the configured
   vocabularies. Every open signal carries a machine date: `next_expected` (with
   `next_expected_what`) when the next event is dated, else `recheck`; session start surfaces both
   when near, so a hand-written date never goes stale silently. Add every identifier to `aliases:`.
-  `status` is the latest stage reached; a later phase (a model that starts in two years) goes in
-  `next_expected`, not in the status. For news with no scheduled follow-up, set `recheck` to when
-  more news is plausible (about 30 days by default) and close the signal with a closed status at
+  `stage` is the latest stage reached; a later phase (a model that starts in two years) goes in
+  `next_expected`, not in the stage. For news with no scheduled follow-up, set `recheck` to when
+  more news is plausible (about 30 days by default) and close the signal with a closed stage at
   that recheck if nothing moved, rather than rolling the date forward.
 - **Log, newest first.** One dated entry per source in the page's `## Log`. A **primary document**
   (rule text, filing, report) also gets a `notes/` page with `as_of:` set to its event date
   (`timestamp:` stays record time, as everywhere); a **secondary article** is a log line with its
-  staged source and no notes page. Update `status`, `last_event` and the date fields in the same
+  staged source and no notes page. Update `stage`, `last_event` and the date fields in the same
   edit (`wiki-fm set` writes frontmatter atomically).
 - **Relevance cites owners.** "What it means for us" marks each claim with the wiki's own confidence
   vocabulary and links the page that owns the fact (an entity or concept page with its survey
-  date), not a code path nothing watches. Restate it when the status moves.
+  date), not a code path nothing watches. Restate it when the stage moves.
 - **The index is generated.** `hooks/signals-board.py` rewrites the block in `<dir>/index.md` at
   commit, sorted by the nearest date; never hand-edit that table. `--check` reports vocabulary and
   missing-date issues.

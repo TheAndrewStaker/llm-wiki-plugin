@@ -125,10 +125,11 @@ dk=$(printf '%s\n' "$port"   | sed -n 's/^PORT dupkey=\([0-9]*\).*/\1/p')
 tb=$(printf '%s\n' "$port"   | sed -n 's/^PORT [^ ]* tab=\([0-9]*\).*/\1/p')
 pa=$(printf '%s\n' "$port"   | sed -n 's/.* ambig=\([0-9]*\).*/\1/p')
 pd=$(printf '%s\n' "$port"   | sed -n 's/.* desc=\([0-9]*\).*/\1/p')
+os=$(printf '%s\n' "$port"   | sed -n 's/.* status=\([0-9]*\).*/\1/p')
 ng=$(printf '%s\n' "$neigh"  | sed -n 's/^NEIGHBORS=//p')
 ic=$(printf '%s\n' "$init"   | sed -n 's/^INIT-FAIL=\([0-9]*\).*/\1/p')
 
-summary_line="broken-links:${b:-?}  external:${ex:-?}/${em:-?}  ignored-targets:${ig:-?}  unresolved:${u:-?}  bad-yaml:${by:-?}  orphans:${orp:-?}  islands:${islands:-?}  missed-links:${ml:-?}  missed-links-added:${mla:--}  no-type:${nt:-?}  stale:${st:-?}  collisions:${col:-?}  unindexed:${unx:-?}  missing-fields:${mf:-?}  dead-ends:${de:-?}  stale-pointers:${sp:-?}  chains:${ch:-?}  wanted:${wp:-?}  inbox:${ib:-?}  drift:${dr:-?}  rubber-stamp:${rs:-?}  dup-keys:${dk:-?}  fm-tabs:${tb:-?}  ambig-yaml:${pa:-?}  desc-quality:${pd:-?}  neighbors:${ng:-?}  vendor:${vn:-?}  init-fail:${ic:-?}"
+summary_line="broken-links:${b:-?}  external:${ex:-?}/${em:-?}  ignored-targets:${ig:-?}  unresolved:${u:-?}  bad-yaml:${by:-?}  orphans:${orp:-?}  islands:${islands:-?}  missed-links:${ml:-?}  missed-links-added:${mla:--}  no-type:${nt:-?}  stale:${st:-?}  collisions:${col:-?}  unindexed:${unx:-?}  missing-fields:${mf:-?}  dead-ends:${de:-?}  stale-pointers:${sp:-?}  chains:${ch:-?}  wanted:${wp:-?}  inbox:${ib:-?}  drift:${dr:-?}  rubber-stamp:${rs:-?}  dup-keys:${dk:-?}  fm-tabs:${tb:-?}  ambig-yaml:${pa:-?}  desc-quality:${pd:-?}  okf-status:${os:-?}  neighbors:${ng:-?}  vendor:${vn:-?}  init-fail:${ic:-?}"
 echo "${C}== summary ==${Z}  ${summary_line}"
 
 # Gate-only restores stdout here, so only the verdict lines below print.
@@ -189,11 +190,11 @@ PY
     echo "${R}FAIL${Z} (wiki pages in content_dirs are gitignored, so they are never committed or linted)"; exit 1
   fi
 fi
-budget_report=$(python3 - "$KB" "${orp:--1}" "${islands:--1}" "${ml:--1}" "${col:--1}" "${unx:--1}" "${de:--1}" "${em:--1}" "${ig:--1}" "${rs:--1}" "${mla:--1}" <<'PY'
+budget_report=$(python3 - "$KB" "${orp:--1}" "${islands:--1}" "${ml:--1}" "${col:--1}" "${unx:--1}" "${de:--1}" "${em:--1}" "${ig:--1}" "${rs:--1}" "${mla:--1}" "${os:--1}" <<'PY'
 import json, os, sys
 root, values = sys.argv[1], sys.argv[2:]
 names = ("orphan", "islands", "missed_links", "collision", "unindexed", "deadend",
-         "external_missing", "ignored_targets", "rubber_stamp", "missed_links_added")
+         "external_missing", "ignored_targets", "rubber_stamp", "missed_links_added", "okf_status")
 try:
     cfg = json.load(open(os.path.join(root, "wiki.config.json"), encoding="utf-8"))
 except (FileNotFoundError, ValueError, OSError):
@@ -225,6 +226,7 @@ if [ "$budget_rc" -ne 0 ]; then
       external_missing)   printf '%s\n' "$core"    | grep '^  EXTERNAL ' ;;
       ignored_targets)    printf '%s\n' "$core"    | grep '^  IGNORED-TARGET ' ;;
       rubber_stamp)       printf '%s\n' "$rubber"  | grep '^  RUBBER-STAMP' ;;
+      okf_status)         printf '%s\n' "$port"    | grep '^  PORT-STATUS ' ;;
     esac
   done
   echo "${R}FAIL${Z} (configured advisory budget exceeded)"; exit 1

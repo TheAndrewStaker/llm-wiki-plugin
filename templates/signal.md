@@ -3,7 +3,7 @@ type: signal
 title: <storyline name, not a document ID>
 description: <one sentence: what is changing and for whom>
 kind: <one of the configured kinds, e.g. rule | statute | litigation | recurring-report | market>
-status: <a status allowed for that kind>
+stage: <a stage allowed for that kind>
 relevance: <direct | adjacent | background>
 next_expected: <YYYY-MM-DD, the next dated event, or omit when unknown>
 next_expected_what: "<what happens on that date; mark (est.) when estimated>"
@@ -24,7 +24,7 @@ timestamp: <YYYY-MM-DD, last meaningful change to this page>
 
 Each claim marked with the wiki's confidence vocabulary and linked to the page that owns the fact
 (an entity or concept page with its own survey date), not to code paths that nothing watches.
-Restate this section whenever the status moves; a final rule can flip a proposed rule's impact.
+Restate this section whenever the stage moves; a final rule can flip a proposed rule's impact.
 
 ## Log
 

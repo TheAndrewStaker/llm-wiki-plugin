@@ -7,7 +7,8 @@ surface containing only Markdown concept pages and reserved index.md files.
 
 Export synthesizes the v0.2 trust families from what pages already carry and appends
 them to each page's frontmatter block without re-serializing the author's YAML:
-`generated {by, at}` from `timestamp` when `okf.generated_by` is configured, `verified`
+`generated {by, at}` from `timestamp` when `okf.generated_by` is configured (a bare
+producer name gets this plugin's version appended), `verified`
 from `reviewed` when `okf.verifier` is configured, `sources` from `synthesized_from`
 (URLs, and paths that exist in the bundle), `status: deprecated` from the supersede
 marker. Every timestamp-valued key becomes an ISO 8601 datetime with an explicit
@@ -192,6 +193,21 @@ def slug(entry):
     return out[:60] or "source"
 
 
+def plugin_version():
+    try:
+        with open(os.path.join(os.path.dirname(HERE), ".claude-plugin", "plugin.json"), encoding="utf-8") as fh:
+            return json.load(fh).get("version")
+    except (OSError, ValueError):
+        return None
+
+
+def producer(name):
+    if "/" in name or name.startswith(("human:", "process:")):
+        return name
+    version = plugin_version()
+    return f"{name}/{version}" if version else name
+
+
 def enrich(text, rel, config, exported):
     """Append the v0.2 families to a page's frontmatter; keys the author already set win."""
     m = FRONTMATTER.match(text)
@@ -214,7 +230,7 @@ def enrich(text, rel, config, exported):
     ts = wikilib.frontmatter_value(fm, "timestamp")
     at = iso_instant(ts) if ts else None
     if okf.get("generated_by") and at and not have("generated"):
-        extra.append(f"generated:\n  by: {okf['generated_by']}\n  at: {at}")
+        extra.append(f"generated:\n  by: {producer(okf['generated_by'])}\n  at: {at}")
     reviewed = wikilib.frontmatter_value(fm, "reviewed")
     seen = iso_instant(reviewed) if reviewed else None
     if okf.get("verifier") and seen and not have("verified"):

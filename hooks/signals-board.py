@@ -14,7 +14,7 @@ Config (wiki.config.json), feature off when absent:
     "closed": ["effective", "withdrawn"]
   }
 
-Page frontmatter: type: signal, kind, status, relevance, next_expected (YYYY-MM-DD),
+Page frontmatter: type: signal, kind, stage, relevance, next_expected (YYYY-MM-DD),
 next_expected_what, recheck (YYYY-MM-DD), last_event (YYYY-MM-DD), aliases.
 
 Usage:
@@ -95,7 +95,7 @@ def load_pages(kb, cfg, from_index=False):
             "file": f,
             "title": get("title") or f[:-3],
             "kind": get("kind"),
-            "status": get("status"),
+            "stage": get("stage"),
             "relevance": get("relevance"),
             "next_expected": get("next_expected"),
             "next_what": get("next_expected_what"),
@@ -112,20 +112,20 @@ def issues(pages, cfg):
     out = []
     for p in pages:
         f = p["file"]
-        for key in ("kind", "status", "relevance"):
+        for key in ("kind", "stage", "relevance"):
             if not p[key]:
                 out.append(f"{f}: missing {key}")
         if kinds and p["kind"] and p["kind"] not in kinds:
             out.append(f"{f}: kind '{p['kind']}' not in {sorted(kinds)}")
         allowed = kinds.get(p["kind"]) if kinds else None
-        if allowed and p["status"] and p["status"] not in allowed:
-            out.append(f"{f}: status '{p['status']}' not allowed for kind '{p['kind']}' {allowed}")
+        if allowed and p["stage"] and p["stage"] not in allowed:
+            out.append(f"{f}: stage '{p['stage']}' not allowed for kind '{p['kind']}' {allowed}")
         if relevance and p["relevance"] and p["relevance"] not in relevance:
             out.append(f"{f}: relevance '{p['relevance']}' not in {relevance}")
         for key in ("next_expected", "recheck", "last_event"):
             if p[key] and not date_or_none(p[key]):
                 out.append(f"{f}: {key} '{p[key]}' is not YYYY-MM-DD")
-        closed = p["status"] in (cfg.get("closed") or [])
+        closed = p["stage"] in (cfg.get("closed") or [])
         if not closed and not date_or_none(p["next_expected"]) and not date_or_none(p["recheck"]):
             out.append(f"{f}: open signal has neither next_expected nor recheck, so nothing resurfaces it")
     return out
@@ -137,8 +137,8 @@ def cell(text):
 
 def render(pages, cfg):
     closed_set = set(cfg.get("closed") or [])
-    open_rows = [p for p in pages if p["status"] not in closed_set]
-    closed_rows = [p for p in pages if p["status"] in closed_set]
+    open_rows = [p for p in pages if p["stage"] not in closed_set]
+    closed_rows = [p for p in pages if p["stage"] in closed_set]
     far = datetime.date.max
 
     def due(p):
@@ -148,17 +148,17 @@ def render(pages, cfg):
     open_rows.sort(key=lambda p: (due(p), p["title"].lower()))
     closed_rows.sort(key=lambda p: (p["last_event"] or ""), reverse=True)
     lines = [BEGIN, "", f"## Open ({len(open_rows)})", "",
-             "| Signal | Kind | Status | Relevance | Next expected | Recheck | Last event |",
+             "| Signal | Kind | Stage | Relevance | Next expected | Recheck | Last event |",
              "|---|---|---|---|---|---|---|"]
     for p in open_rows:
         nxt = " ".join(x for x in (p["next_expected"], p["next_what"]) if x)
-        lines.append(f"| [{cell(p['title'])}]({p['file']}) | {p['kind']} | {p['status']} | "
+        lines.append(f"| [{cell(p['title'])}]({p['file']}) | {p['kind']} | {p['stage']} | "
                      f"{p['relevance']} | {cell(nxt)} | {p['recheck']} | {p['last_event']} |")
     lines += ["", f"## Closed ({len(closed_rows)})", ""]
     if closed_rows:
-        lines += ["| Signal | Kind | Status | Last event |", "|---|---|---|---|"]
+        lines += ["| Signal | Kind | Stage | Last event |", "|---|---|---|---|"]
         for p in closed_rows:
-            lines.append(f"| [{cell(p['title'])}]({p['file']}) | {p['kind']} | {p['status']} | {p['last_event']} |")
+            lines.append(f"| [{cell(p['title'])}]({p['file']}) | {p['kind']} | {p['stage']} | {p['last_event']} |")
     else:
         lines.append("(none)")
     lines += ["", END]
@@ -186,7 +186,7 @@ def due_lines(pages, cfg, today=None):
     closed_set = set(cfg.get("closed") or [])
     rows = []
     for p in pages:
-        if p["status"] in closed_set:
+        if p["stage"] in closed_set:
             continue
         for key, label in (("next_expected", p["next_what"] or "next expected event"),
                            ("recheck", "recheck status")):
@@ -240,7 +240,7 @@ def main():
     if args.find is not None:
         hits = find(pages, args.find)
         for p in hits:
-            print(f"{os.path.join(cfg['dir'], p['file'])}\t{p['status']}\t{p['title']}")
+            print(f"{os.path.join(cfg['dir'], p['file'])}\t{p['stage']}\t{p['title']}")
         return 0 if hits else 1
     if args.check:
         found = issues(pages, cfg)
