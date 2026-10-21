@@ -2,11 +2,13 @@
 """Compute a BOUNDED candidate scope for a reflection pass, so the LLM judgment pass stays
 scoped (touched/flagged pages + a few oldest) and never runs over the whole wiki.
 
-Scope = union of:
-  (a) source-freshness RE-CHECK / ORPHANED-SOURCE pages (hooks/stale-source.py),
+Scope = union of, in priority order:
+  (a) source-freshness RE-CHECK / ORPHANED-SOURCE pages (hooks/stale-source.py): the
+      range's changes, then every page still due (--due), so a page left out of one
+      pass stays a candidate until its re-verification is recorded,
   (b) the top missed-link pages (hooks/missed-links.py),
   (c) the N oldest-`timestamp` content pages.
-Capped (default 15). Usage:
+Capped (default 15); the cap drops from the end of that order. Usage:
     python3 hooks/reflect-scope.py [--range A..B] [--oldest N] [WIKI_ROOT]
 """
 import os
@@ -42,16 +44,16 @@ def run(script, *extra):
     ).stdout
 
 
-scope = set()
-stale = run("stale-source.py", *(["--range", rng] if rng else []))
-for ln in stale.splitlines():
-    m = re.search(r"(?:RE-CHECK|ORPHANED-SOURCE) (\S+)", ln)
-    if m:
-        scope.add(m.group(1))
+scope = {}  # insertion-ordered: the cap keeps the highest-priority candidates
+for extra in (["--range", rng] if rng else [], ["--due"]):
+    for ln in run("stale-source.py", *extra).splitlines():
+        m = re.search(r"(?:RE-CHECK|ORPHANED-SOURCE) (\S+)", ln)
+        if m:
+            scope.setdefault(m.group(1))
 for ln in run("missed-links.py").splitlines():
     m = re.search(r"MISSED-LINK (\S+)", ln)
     if m:
-        scope.add(m.group(1))
+        scope.setdefault(m.group(1))
 
 content_dirs = tuple(cfg["content_dirs"])
 files = wikilib.git_files(KB)
@@ -63,9 +65,9 @@ for f in files:
     if m:
         dated.append((m.group(1), f))
 for _, f in sorted(dated)[:oldest]:
-    scope.add(f)
+    scope.setdefault(f)
 
-out = sorted(scope)[:CAP]
+out = list(scope)[:CAP]
 for f in out:
     print(f"  {f}")
 print(f"SCOPE_COUNT={len(out)} (of {len(scope)} candidates; capped at {CAP})")

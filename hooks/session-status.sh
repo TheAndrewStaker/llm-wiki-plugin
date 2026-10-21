@@ -105,6 +105,19 @@ print((datetime.date.today()-d).days)" "$rdate" 2>/dev/null)
   fi
 fi
 
+# 1b1. Source re-checks: pages citing a source that changed after the page was last verified.
+# Cursor-free (stale-source.py --due), so a flag clears only when the page records reviewed:.
+if [ -f "$H/stale-source.py" ] && command -v python3 >/dev/null 2>&1 \
+   && git -C "$KB" rev-parse --git-dir >/dev/null 2>&1; then
+  due_out=$(python3 "$H/stale-source.py" --due "$KB" 2>/dev/null || true)
+  due_pages=$(printf '%s\n' "$due_out" | sed -n 's/^  RE-CHECK \([^ ]*\) .*/\1/p' | sort -u)
+  due_n=$(printf '%s\n' "$due_pages" | grep -c . || true)
+  if [ "${due_n:-0}" -gt 0 ]; then
+    due_eg=$(printf '%s\n' "$due_pages" | head -3 | paste -sd ',' - | sed 's/,/, /g')
+    warn="${warn:+$warn | }sources: ${due_n} page(s) cite a source changed since they were verified (${due_eg}); reflect re-checks them"
+  fi
+fi
+
 # 1b2. Standing aims (config `aims`): one line naming aims whose carrier is finished or
 #      parked, or whose reviewed: date is past reflect_nudge_days. Also sweeps log-guard
 #      session records older than 7 days. Both best-effort.

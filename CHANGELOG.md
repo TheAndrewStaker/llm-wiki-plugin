@@ -6,6 +6,19 @@ This project follows Keep a Changelog and intends to use Semantic Versioning aft
 
 ### Added
 
+- `stale-source.py --due`: every page whose cited source changed after the page's
+  `reviewed:`/`timestamp:`, cursor-free; surfaced at session start, by `wrap`, and in reflect's scope.
+- `vocab-check.py`: `UNKNOWN-TYPE` against an optional `types` list and `UNCHECKABLE-ADDED` for
+  free-text `synthesized_from` entries a change adds; budgets `unknown_type`,
+  `uncheckable_sources_added`.
+- Lint flags a `status:` outside OKF's `draft|stable|deprecated` (`PORT-STATUS`, budget `okf_status`).
+
+### Changed
+
+- Signal pages use `stage:` instead of `status:`, which OKF reserves.
+- `synthesized_from` is parsed by `wikilib.fm_sources` everywhere: folded scalars, quoted commas
+  and comma-separated paths no longer read as one bogus path, and a bare word is free text.
+
 - Tiers on the board (`initiative_schema.kind_tier`, `tier_labels`; off by default): rows group by
   tier first, so a lower tier always outranks a higher one, and `priority` orders within a tier.
 - Dated owner queue (`queue_dated`): bullets in `open-asks/<owner>.md` must start

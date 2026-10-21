@@ -2780,6 +2780,143 @@ assert "index mode skips an unstaged signal" "" "$(printf '%s' "$idxout" | grep 
 assert "no config means no output" "" "$(python3 "$H/signals-board.py" "$W" --due 2>&1)"
 rm -rf "$(dirname "$SW")"
 
+echo "--- citations: every synthesized_from form parses, prose stays whole ---"
+cit() { python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import wikilib; print("|".join(wikilib.fm_sources(sys.argv[2])))' "$H" "$1"; }
+assert "folded scalar splits into its locators" "../a.md|https://example.com/x|../b.md" \
+  "$(cit "$(printf 'synthesized_from: >-\n  ../a.md,\n  https://example.com/x, ../b.md\ntitle: t')")"
+assert "comma scalar of paths splits" "../a.md|../b/c.md" "$(cit 'synthesized_from: ../a.md, ../b/c.md')"
+assert "prose with commas stays one entry" "the kickoff call, the notes, and chat" \
+  "$(cit 'synthesized_from: the kickoff call, the notes, and chat')"
+assert "prose between paths stays whole and paths split" "../a.vtt|screenshots, two chats|../n.md" \
+  "$(cit 'synthesized_from: ../a.vtt, screenshots, two chats, ../n.md')"
+assert "a quoted comma in a flow list is not a separator" "Update, Q3|../a.md" \
+  "$(cit 'synthesized_from: ["Update, Q3", ../a.md]')"
+assert "block list skips comments and blanks" "../a.md|b c" \
+  "$(cit "$(printf 'synthesized_from:\n  # note\n  - ../a.md\n\n  - "b c"\ntags: [x]')")"
+assert "a plain-scalar comment is dropped" "../a.md" "$(cit 'synthesized_from: ../a.md  # primary')"
+kind() { python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import wikilib; print(wikilib.citation_kind(sys.argv[2]))' "$H" "$1"; }
+assert "a bare word is free text" "freetext" "$(kind Widget)"
+assert "a bare id is free text" "freetext" "$(kind 0a1b2c3d)"
+assert "a filename is a path" "path" "$(kind notes.md)"
+assert "a dir path is a path" "path" "$(kind sources/2030/x)"
+assert "a URL is a URL" "url" "$(kind https://example.com/a)"
+
+echo "--- stale-source --due: cursor-free re-checks, cleared only by reviewed: ---"
+DW="$(mktemp -d)/wiki"
+mkdir -p "$DW/notes" "$DW/analyses" "$DW/journal"
+printf '{"stale_exempt_dirs": ["journal/"]}\n' > "$DW/wiki.config.json"
+printf -- '---\ntype: index\ntitle: K\n---\n' > "$DW/KNOWLEDGE.md"
+printf -- '---\ntype: notes\ntitle: Src\n---\nv1\n' > "$DW/notes/src.md"
+printf -- '---\ntype: analysis\ntitle: Folded\ntimestamp: 2030-01-01\nsynthesized_from: >-\n  ../notes/src.md,\n  Widget\n---\nx\n' > "$DW/analyses/folded.md"
+printf -- '---\ntype: analysis\ntitle: Reviewed\ntimestamp: 2030-01-01\nreviewed: 2030-03-01\nsynthesized_from: ../notes/src.md\n---\nx\n' > "$DW/analyses/reviewed.md"
+printf -- '---\ntype: journal\ntitle: J\ntimestamp: 2030-01-01\nsynthesized_from: ../notes/src.md\n---\nx\n' > "$DW/journal/j.md"
+git -C "$DW" init -q
+git -C "$DW" add -A
+GIT_COMMITTER_DATE=2030-01-01T12:00:00 git -C "$DW" -c user.name=t -c user.email=t@t commit -qm one
+due=$(python3 "$H/stale-source.py" --due "$DW")
+assert "nothing due before the source moves" "RECHECK=0" "$(printf '%s\n' "$due" | tail -1 | cut -d' ' -f1)"
+printf 'v2\n' >> "$DW/notes/src.md"
+GIT_COMMITTER_DATE=2030-02-01T12:00:00 git -C "$DW" -c user.name=t -c user.email=t@t commit -qam two
+due=$(python3 "$H/stale-source.py" --due "$DW")
+assert_contains "a folded citation is re-checked" "RE-CHECK analyses/folded.md" "$due"
+assert "a folded value is never an orphaned '>-'" "0" "$(printf '%s\n' "$due" | grep -c "synthesized_from >-")"
+assert_contains "a bare word is uncheckable, not orphaned" "UNCHECKABLE analyses/folded.md  (synthesized_from Widget" "$due"
+assert "a page reviewed after the change is clear" "0" "$(printf '%s\n' "$due" | grep -c 'RE-CHECK analyses/reviewed.md')"
+assert "an exempt dir is skipped" "0" "$(printf '%s\n' "$due" | grep -c 'journal/j.md')"
+for i in 3 4 5; do printf 'pad %s\n' "$i" >> "$DW/analyses/reviewed.md"
+  GIT_COMMITTER_DATE=2030-02-0${i}T12:00:00 git -C "$DW" -c user.name=t -c user.email=t@t commit -qam "pad $i"; done
+assert_contains "still due after unrelated commits (no cursor)" "RE-CHECK analyses/folded.md" \
+  "$(python3 "$H/stale-source.py" --due "$DW")"
+assert_contains "reflect scope keeps a due page outside its range" "analyses/folded.md" \
+  "$(python3 "$H/reflect-scope.py" --range HEAD~1..HEAD "$DW")"
+out=$(WIKI_ROOT="$DW" bash "$H/session-status.sh" 2>&1)
+assert_contains "session start names the due page" "sources: 1 page(s) cite a source changed since they were verified (analyses/folded.md)" "$out"
+python3 - "$DW/analyses/folded.md" <<'PYEOF'
+import sys
+p = sys.argv[1]
+s = open(p).read().replace("timestamp: 2030-01-01\n", "timestamp: 2030-01-01\nreviewed: 2030-02-10\n", 1)
+open(p, "w").write(s)
+PYEOF
+GIT_COMMITTER_DATE=2030-02-10T12:00:00 git -C "$DW" -c user.name=t -c user.email=t@t commit -qam reviewed
+assert "recording reviewed: clears it" "RECHECK=0" "$(python3 "$H/stale-source.py" --due "$DW" | tail -1 | cut -d' ' -f1)"
+out=$(WIKI_ROOT="$DW" bash "$H/session-status.sh" 2>&1)
+assert "and session start goes quiet" "0" "$(printf '%s' "$out" | grep -c 'sources: ')"
+NG="$(mktemp -d)"; cp -R "$DW/analyses" "$NG/"
+assert "a non-git wiki reports nothing due, without error" "RECHECK=0" "$(python3 "$H/stale-source.py" --due "$NG" 2>&1 | tail -1 | cut -d' ' -f1)"
+rm -rf "$(dirname "$DW")" "$NG"
+
+echo "--- vocab-check: type vocabulary and newly added free-text citations ---"
+VW="$(mktemp -d)/wiki"
+mkdir -p "$VW/concepts"
+printf -- '---\ntype: concept\ntitle: A\nsynthesized_from: [old prose source, ../concepts/b.md]\n---\nsee [b](b.md)\n' > "$VW/concepts/a.md"
+printf -- '---\ntype: concpet\ntitle: B\n---\nsee [a](a.md)\n' > "$VW/concepts/b.md"
+git -C "$VW" init -q
+git -C "$VW" add -A
+git -C "$VW" -c user.name=t -c user.email=t@t commit -qm one
+assert "no types list means no type check" "0" "$(python3 "$H/vocab-check.py" "$VW" | grep -c UNKNOWN-TYPE)"
+printf '{"types": ["concept"]}\n' > "$VW/wiki.config.json"
+assert_contains "an unlisted type is flagged" "UNKNOWN-TYPE concepts/b.md ('concpet'" "$(python3 "$H/vocab-check.py" "$VW")"
+printf -- '---\ntype: concept\ntitle: A\nsynthesized_from:\n  - ../concepts/b.md\n  - old prose source\n---\nsee [b](b.md)\n' > "$VW/concepts/a.md"
+assert "reordering and reformatting adds nothing" "0" "$(python3 "$H/vocab-check.py" "$VW" | grep -c UNCHECKABLE-ADDED)"
+printf -- '---\ntype: concept\ntitle: A\nsynthesized_from:\n  - ../concepts/b.md\n  - old prose source\n  - ../concepts/c.md\n  - https://example.com/x\n---\nsee [b](b.md)\n' > "$VW/concepts/a.md"
+assert "adding a path or URL adds nothing" "0" "$(python3 "$H/vocab-check.py" "$VW" | grep -c UNCHECKABLE-ADDED)"
+printf -- '---\ntype: concept\ntitle: A\nsynthesized_from: [old prose source, a hallway chat]\n---\nsee [b](b.md)\n' > "$VW/concepts/a.md"
+assert_contains "adding free text is counted" "UNCHECKABLE-ADDED concepts/a.md (1: a hallway chat)" "$(python3 "$H/vocab-check.py" "$VW")"
+git -C "$VW" add -A
+assert_contains "index mode judges the staged change" "uncheckable_added=1" "$(WIKI_CHECK_INDEX=1 python3 "$H/vocab-check.py" "$VW" | tail -1)"
+git -C "$VW" -c user.name=t -c user.email=t@t commit -qm two
+git -C "$VW" mv concepts/a.md concepts/a2.md
+printf 'moved\n' >> "$VW/concepts/a2.md"
+git -C "$VW" add -A
+assert "a rename compares with the old path" "0" "$(WIKI_CHECK_INDEX=1 python3 "$H/vocab-check.py" "$VW" | grep -c UNCHECKABLE-ADDED)"
+git -C "$VW" -c user.name=t -c user.email=t@t commit -qm three
+printf -- '---\ntype: concpet\ntitle: B\n---\nsee [a](a2.md)\n' > "$VW/concepts/b.md"
+git -C "$VW" -c user.name=t -c user.email=t@t commit -qam relink
+bash "$H/lint.sh" "$VW" >/dev/null 2>&1; rc=$?
+assert "without budgets both stay advisory" "0" "$rc"
+printf '{"types": ["concept"], "advisory_budgets": {"unknown_type": 0}}\n' > "$VW/wiki.config.json"
+vl=$(bash "$H/lint.sh" "$VW" 2>&1); rc=$?
+assert "advisory_budgets.unknown_type gates it" "1" "$rc"
+assert_contains "and names the page" "UNKNOWN-TYPE concepts/b.md" "$vl"
+vl=$(WIKI_LINT_GATE_ONLY=1 bash "$H/lint.sh" "$VW" 2>&1); rc=$?
+assert "gate-only mode gates it too" "1" "$rc"
+assert_contains "and names the page in gate-only mode" "UNKNOWN-TYPE concepts/b.md" "$vl"
+printf -- '---\ntype: concept\ntitle: B\n---\nsee [a](a2.md)\n' > "$VW/concepts/b.md"
+printf '{"types": ["concept"], "advisory_budgets": {"unknown_type": 0, "uncheckable_sources_added": 0}}\n' > "$VW/wiki.config.json"
+git -C "$VW" -c user.name=t -c user.email=t@t commit -qam fixed
+bash "$H/lint.sh" "$VW" >/dev/null 2>&1; rc=$?
+assert "a clean wiki passes with both budgets on" "0" "$rc"
+printf -- '---\ntype: concept\ntitle: C\nsynthesized_from: a hallway chat\n---\nsee [a](a2.md)\n' > "$VW/concepts/c.md"
+printf -- '---\ntype: concept\ntitle: B\n---\nsee [a](a2.md) and [c](c.md)\n' > "$VW/concepts/b.md"
+vl=$(bash "$H/lint.sh" "$VW" 2>&1); rc=$?
+assert "a new page citing free text fails the budget" "1" "$rc"
+assert_contains "naming it" "UNCHECKABLE-ADDED concepts/c.md" "$vl"
+rm -f "$VW/concepts/c.md"
+printf -- '---\ntype: concept\ntitle: B\n---\nsee [a](a2.md)\n' > "$VW/concepts/b.md"
+
+echo "--- auto-commit: a budgeted UNKNOWN-TYPE page is held back, a bystander commits ---"
+VT="$(dirname "$VW")/writer.jsonl"; VR="$(dirname "$VW")/reader.jsonl"
+python3 - "$VT" "$VR" "$VW" <<'PYEOF'
+import json, sys
+vt, vr, vw = sys.argv[1:4]
+use = lambda n, i: json.dumps({"type": "assistant", "message": {"content": [{"type": "tool_use", "name": n, "input": i}]}}) + "\n"
+open(vt, "w").write(use("Write", {"file_path": vw + "/concepts/d.md"}))
+open(vr, "w").write(use("Write", {"file_path": vw + "/concepts/other.txt"}))
+PYEOF
+printf -- '---\ntype: concept\ntitle: B\n---\nsee [a](a2.md) and [d](d.md)\n' > "$VW/concepts/b.md"
+printf -- '---\ntype: draftt\ntitle: D\n---\nsee [b](b.md)\n' > "$VW/concepts/d.md"
+printf 'bystander\n' > "$VW/concepts/other.txt"
+out=$(printf '{"hook_event_name":"Stop","stop_hook_active":false,"transcript_path":"%s"}' "$VT" \
+  | WIKI_ROOT="$VW" bash "$H/auto-commit.sh" 2>&1); rc=$?
+assert "the writer is blocked" "2" "$rc"
+assert_contains "with the UNKNOWN-TYPE line" "UNKNOWN-TYPE concepts/d.md" "$out"
+out=$(printf '{"hook_event_name":"Stop","stop_hook_active":false,"transcript_path":"%s"}' "$VR" \
+  | WIKI_ROOT="$VW" bash "$H/auto-commit.sh" 2>&1); rc=$?
+assert "a bystander exits 0" "0" "$rc"
+assert "the bystander commits its file" "concepts/other.txt" "$(git -C "$VW" show --name-only --format= HEAD | grep other.txt)"
+assert "and holds the unknown-type page back" "?? concepts/d.md" "$(git -C "$VW" status --short concepts/d.md)"
+rm -rf "$(dirname "$VW")"
+
 echo
 echo "======================================"
 echo "  PASS=$pass  FAIL=$fail"

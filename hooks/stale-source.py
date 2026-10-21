@@ -11,6 +11,10 @@ Modes:
              changes are ignored (git diff -w).
   --standing BACKSTOP for sources OUTSIDE this repo (external abs paths): compare the
              source's commit date to the page's verification date.
+  --due      every path source, inside the repo or out: a source whose last commit is
+             newer than the page's verification date. No range or cursor, so a flag
+             clears only when the page records a re-verification (`reviewed:`). Pages under
+             `stale_exempt_dirs` are skipped. Used at session start, by wrap and by reflect.
 
 Always reported (both modes):
   ORPHANED-SOURCE  synthesized_from is a path that no longer exists.
@@ -18,7 +22,7 @@ Always reported (both modes):
 
 Verification date = `reviewed:` if present, else `timestamp:`. We do NOT auto-expire by age
 (staleness is a symptom, not a timer). Usage:
-    python3 hooks/stale-source.py [--range A..B | --standing] [WIKI_ROOT]
+    python3 hooks/stale-source.py [--range A..B | --standing | --due] [WIKI_ROOT]
 """
 import datetime
 import os
@@ -30,8 +34,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import wikilib
 
 args = sys.argv[1:]
-standing = "--standing" in args
-args = [a for a in args if a != "--standing"]
+due = "--due" in args
+standing = "--standing" in args or due
+args = [a for a in args if a not in ("--standing", "--due")]
 rng = "HEAD~1..HEAD"
 if "--range" in args:
     i = args.index("--range")
@@ -46,6 +51,9 @@ def sh(*a):
 
 
 files = wikilib.git_files(KB)
+if due:
+    exempt = tuple(wikilib.load_config(KB).get("stale_exempt_dirs") or ())
+    files = [f for f in files if not (exempt and f.startswith(exempt))]
 
 
 def verif_date(text):
@@ -55,10 +63,9 @@ def verif_date(text):
 
 def resolve(page, sf):
     sf = re.sub(r'\s+"[^"]*"$', "", sf).strip()
-    if sf.startswith(("http://", "https://", "mailto:")):
-        return ("url", sf)
-    if " " in sf and not sf.startswith(("/", "~", "./", "../")):
-        return ("freetext", sf)
+    kind = wikilib.citation_kind(sf)
+    if kind != "path":
+        return (kind, sf)
     p = os.path.expanduser(sf)
     if not os.path.isabs(p):
         p = os.path.normpath(os.path.join(os.path.dirname(page), sf))
@@ -80,7 +87,21 @@ def git_date(path):
         return None
 
 
+def kb_dates():
+    """{repo-relative path: date of its last commit}, from one log pass."""
+    out = subprocess.run(["git", "log", "--format=%x00%cs", "--name-only"],
+                         capture_output=True, text=True).stdout
+    dates, cur = {}, None
+    for line in out.splitlines():
+        if line.startswith("\0"):
+            cur = line[1:]
+        elif line and cur:
+            dates.setdefault(os.path.normpath(line), cur)
+    return dates
+
+
 changed = set()
+dates = kb_dates() if due else {}
 if not standing:
     base = sh("git", "diff", "-w", "--name-only", rng).splitlines()
     changed = {os.path.normpath(p) for p in base if p}
@@ -89,7 +110,7 @@ recheck, orphaned, uncheckable = [], [], []
 for f in files:
     text = open(f, encoding="utf-8", errors="replace").read()
     # every declared source, not just the first: a page listing five gets five checked
-    for sf in wikilib.frontmatter_values(text, "synthesized_from"):
+    for sf in wikilib.frontmatter_sources(text):
         kind, target = resolve(f, sf)
         if kind in ("url", "freetext"):
             uncheckable.append((f, target, "a URL" if kind == "url" else "free-text"))
@@ -103,9 +124,14 @@ for f in files:
             orphaned.append((f, sf))
             continue
         if standing:
-            if inside_kb:
+            if inside_kb and not due:
                 continue
-            sd = git_date(target)
+            if inside_kb:
+                if not os.path.isfile(target):
+                    continue
+                sd = dates.get(os.path.normpath(os.path.relpath(real_target, real_kb)))
+            else:
+                sd = git_date(target)
             vd = verif_date(text)
             if sd and vd and sd > vd:
                 recheck.append((f, sf, f"source {sd} > verified {vd}"))

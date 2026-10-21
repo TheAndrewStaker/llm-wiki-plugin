@@ -504,6 +504,96 @@ def fm_list(fm_text, key):
     return out
 
 
+_FOLDED = (">", ">-", ">+", "|", "|-", "|+")
+
+
+def _split_flow(body):
+    """Split a flow list's body on commas outside quotes."""
+    items, cur, quote = [], "", None
+    for ch in body:
+        if quote:
+            cur += ch
+            if ch == quote:
+                quote = None
+        elif ch in "'\"":
+            quote, cur = ch, cur + ch
+        elif ch == ",":
+            items.append(cur)
+            cur = ""
+        else:
+            cur += ch
+    items.append(cur)
+    return [i.strip().strip("'\"").strip() for i in items if i.strip().strip("'\"").strip()]
+
+
+def _is_locator(entry):
+    return citation_kind(entry) != "freetext"
+
+
+def _split_scalar(text):
+    """A scalar citation: comma-separated locators split apart, prose kept whole. Adjacent
+    non-locator pieces are rejoined, so a comma inside prose never fragments it."""
+    out = []
+    for piece in (p.strip() for p in text.split(",")):
+        if not piece:
+            continue
+        if out and not _is_locator(piece) and not _is_locator(out[-1]):
+            out[-1] = out[-1] + ", " + piece
+        else:
+            out.append(piece)
+    return out
+
+
+def fm_sources(fm_text, key="synthesized_from"):
+    """Citations under `key`: block list, flow list (quote-aware), folded or literal block
+    scalar, or plain scalar. Scalars split on commas between locators (paths, URLs)."""
+    m = re.search(r"^" + re.escape(key) + r":[ \t]*(.*)$", fm_text, re.M)
+    if not m:
+        return []
+    head = re.sub(r"\s+#.*$", "", m.group(1)).strip() if not m.group(1).strip()[:1] in "'\"" else m.group(1).strip()
+    rest = fm_text[m.end():].lstrip("\n").split("\n")
+    if head in _FOLDED:
+        body = []
+        for line in rest:
+            if line.strip() and not line.startswith((" ", "\t")):
+                break
+            if line.strip():
+                body.append(line.strip())
+        return _split_scalar(" ".join(body))
+    if head.startswith("["):
+        return _split_flow(head.strip()[1:-1] if head.endswith("]") else head[1:])
+    if head:
+        return _split_scalar(head.strip("'\""))
+    out = []
+    for line in rest:
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        item = re.match(r"^\s*-\s+(.+)$", line)
+        if not item:
+            break
+        out.append(item.group(1).strip().strip("'\""))
+    return out
+
+
+def citation_kind(entry):
+    """"url", "path", or "freetext" for one citation. A path starts with / ~ ./ ../, or
+    contains a slash, or ends in a file extension; anything with a space that is not
+    anchored as a path is prose."""
+    if re.match(r"^[a-z][a-z0-9+.-]*://", entry, re.I) or entry.startswith("mailto:"):
+        return "url"
+    if entry.startswith(("/", "~", "./", "../")):
+        return "path"
+    if " " in entry or ("/" not in entry and not re.search(r"\.[A-Za-z0-9]{1,5}$", entry)):
+        return "freetext"
+    return "path"
+
+
+def frontmatter_sources(text, key="synthesized_from"):
+    """fm_sources against a whole page."""
+    block = re.match(r"^---\n(.*?)\n---", text, re.S)
+    return fm_sources(block.group(1), key) if block else []
+
+
 def fm_aliases(fm_text):
     """Names a page answers to. Shared by lint-core (collisions) and wanted-pages
     (resolution) so the two can never disagree."""

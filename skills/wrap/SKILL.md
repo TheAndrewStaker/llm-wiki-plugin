@@ -30,6 +30,10 @@ the wiki root from `$CLAUDE_PLUGIN_OPTION_WIKI_ROOT` / `$WIKI_ROOT` / `~/wiki`.
    - a meaningful edit to an existing page bumps its `timestamp:` to today (cosmetic link/typo edits bump
      nothing; `reviewed:` = re-verification without change).
 3. Run `bash "$WIKI_ROOT/hooks/lint.sh"`; fix any broken links or unresolved tokens.
+   Then run `python3 "$WIKI_ROOT/hooks/stale-source.py" --due "$WIKI_ROOT"`. For each RE-CHECK page
+   whose source this session changed: re-read the page against the changed source; if it still holds,
+   set `reviewed:` to today; if it does not, fix it (and bump `timestamp:`) or leave it for `reflect`.
+   Never bump `reviewed:` without the re-read. Name the RE-CHECK pages you left in the summary.
 4. Commit the wiki changes with `wiki-commit -m "<message>" <path>...` naming the files this session
    wrote (never `git add` + `git commit`: the index is shared with parallel sessions).
-5. Report a 2-line summary of what was filed. It is now safe to end the session.
+5. Report a 2-line summary of what was filed, plus any RE-CHECK pages left open. It is now safe to end the session.

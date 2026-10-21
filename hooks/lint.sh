@@ -7,7 +7,7 @@
 # would hand the verdict to an unrelated repo's working tree. "ignored-targets" names the
 # inverse blind spot: a target the working tree has and git is set to ignore, so it is present
 # for the author and gone in every clone. Both can be gated per wiki via advisory_budgets.
-# Source-freshness (stale-source.py) is a separate triggered tool.
+# Source-freshness (stale-source.py) is a separate triggered tool, surfaced at session start.
 set -uo pipefail
 
 KB="${1:-${CLAUDE_PLUGIN_OPTION_WIKI_ROOT:-${WIKI_ROOT:-$HOME/wiki}}}"
@@ -27,7 +27,7 @@ if [ -t 1 ]; then C=$'\033[36m'; R=$'\033[31m'; G=$'\033[32m'; Z=$'\033[0m'; els
 missing_checkers=""
 for c in lint-core.py graph-check.py missed-links.py wanted-pages.py inbox-check.py \
          timestamp-drift.py rubber-stamp.py frontmatter-portability.py neighbor-scope.py \
-         vendor-check.py initiative-check.py; do
+         vendor-check.py initiative-check.py vocab-check.py; do
   [ -f "$H/$c" ] || missing_checkers="${missing_checkers:+$missing_checkers }$c"
 done
 if [ -n "$missing_checkers" ]; then
@@ -56,7 +56,7 @@ needed() { # needed <budget-name>: run an advisory checker in gate-only mode onl
 core_err=$(mktemp)
 core=$(python3 "$H/lint-core.py" "$KB" 2>"$core_err")
 core_rc=$?
-graph=""; missed=""; wanted=""; inbox=""; drift=""; rubber=""; neigh=""; vendor=""
+graph=""; missed=""; wanted=""; inbox=""; drift=""; rubber=""; neigh=""; vendor=""; vocab=""
 needed islands && graph=$(python3 "$H/graph-check.py" "$KB" 2>/dev/null || true)
 needed missed_links && missed=$(python3 "$H/missed-links.py" "$KB" 2>/dev/null || true)
 mla_out=""
@@ -70,6 +70,8 @@ if [ "$gate_only" != "1" ]; then
   vendor=$(python3 "$H/vendor-check.py" "$KB" 2>/dev/null || true)
 fi
 port=$(python3 "$H/frontmatter-portability.py" "$KB" 2>/dev/null || true)
+{ needed unknown_type || needed uncheckable_sources_added; } \
+  && vocab=$(python3 "$H/vocab-check.py" "$KB" 2>/dev/null || true)
 init=$(python3 "$H/initiative-check.py" "$KB" 2>/dev/null || true)
 
 if [ "$gate_only" = "1" ]; then
@@ -94,6 +96,7 @@ printf '%s\n' "$inbox"  | grep '^  INBOX-' || true
 printf '%s\n' "$drift"  | grep '^  DRIFT' || true
 printf '%s\n' "$rubber" | grep '^  RUBBER-STAMP' || true
 printf '%s\n' "$port"   | grep '^  PORT-' || true
+printf '%s\n' "$vocab"  | grep -E '^  (UNKNOWN-TYPE|UNCHECKABLE-ADDED) ' || true
 printf '%s\n' "$neigh"  | grep '^  NEIGHBOR' || true
 printf '%s\n' "$vendor" | grep '^  VENDOR-' || true
 printf '%s\n' "$init"   | grep '^  INIT-FAIL' || true
@@ -126,10 +129,12 @@ tb=$(printf '%s\n' "$port"   | sed -n 's/^PORT [^ ]* tab=\([0-9]*\).*/\1/p')
 pa=$(printf '%s\n' "$port"   | sed -n 's/.* ambig=\([0-9]*\).*/\1/p')
 pd=$(printf '%s\n' "$port"   | sed -n 's/.* desc=\([0-9]*\).*/\1/p')
 os=$(printf '%s\n' "$port"   | sed -n 's/.* status=\([0-9]*\).*/\1/p')
+ut=$(printf '%s\n' "$vocab"  | sed -n 's/^VOCAB unknown_type=\([0-9]*\).*/\1/p')
+ua=$(printf '%s\n' "$vocab"  | sed -n 's/.* uncheckable_added=\([0-9]*\).*/\1/p')
 ng=$(printf '%s\n' "$neigh"  | sed -n 's/^NEIGHBORS=//p')
 ic=$(printf '%s\n' "$init"   | sed -n 's/^INIT-FAIL=\([0-9]*\).*/\1/p')
 
-summary_line="broken-links:${b:-?}  external:${ex:-?}/${em:-?}  ignored-targets:${ig:-?}  unresolved:${u:-?}  bad-yaml:${by:-?}  orphans:${orp:-?}  islands:${islands:-?}  missed-links:${ml:-?}  missed-links-added:${mla:--}  no-type:${nt:-?}  stale:${st:-?}  collisions:${col:-?}  unindexed:${unx:-?}  missing-fields:${mf:-?}  dead-ends:${de:-?}  stale-pointers:${sp:-?}  chains:${ch:-?}  wanted:${wp:-?}  inbox:${ib:-?}  drift:${dr:-?}  rubber-stamp:${rs:-?}  dup-keys:${dk:-?}  fm-tabs:${tb:-?}  ambig-yaml:${pa:-?}  desc-quality:${pd:-?}  okf-status:${os:-?}  neighbors:${ng:-?}  vendor:${vn:-?}  init-fail:${ic:-?}"
+summary_line="broken-links:${b:-?}  external:${ex:-?}/${em:-?}  ignored-targets:${ig:-?}  unresolved:${u:-?}  bad-yaml:${by:-?}  orphans:${orp:-?}  islands:${islands:-?}  missed-links:${ml:-?}  missed-links-added:${mla:--}  no-type:${nt:-?}  stale:${st:-?}  collisions:${col:-?}  unindexed:${unx:-?}  missing-fields:${mf:-?}  dead-ends:${de:-?}  stale-pointers:${sp:-?}  chains:${ch:-?}  wanted:${wp:-?}  inbox:${ib:-?}  drift:${dr:-?}  rubber-stamp:${rs:-?}  dup-keys:${dk:-?}  fm-tabs:${tb:-?}  ambig-yaml:${pa:-?}  desc-quality:${pd:-?}  okf-status:${os:-?}  unknown-type:${ut:-?}  uncheckable-added:${ua:-?}  neighbors:${ng:-?}  vendor:${vn:-?}  init-fail:${ic:-?}"
 echo "${C}== summary ==${Z}  ${summary_line}"
 
 # Gate-only restores stdout here, so only the verdict lines below print.
@@ -190,11 +195,12 @@ PY
     echo "${R}FAIL${Z} (wiki pages in content_dirs are gitignored, so they are never committed or linted)"; exit 1
   fi
 fi
-budget_report=$(python3 - "$KB" "${orp:--1}" "${islands:--1}" "${ml:--1}" "${col:--1}" "${unx:--1}" "${de:--1}" "${em:--1}" "${ig:--1}" "${rs:--1}" "${mla:--1}" "${os:--1}" <<'PY'
+budget_report=$(python3 - "$KB" "${orp:--1}" "${islands:--1}" "${ml:--1}" "${col:--1}" "${unx:--1}" "${de:--1}" "${em:--1}" "${ig:--1}" "${rs:--1}" "${mla:--1}" "${os:--1}" "${ut:--1}" "${ua:--1}" <<'PY'
 import json, os, sys
 root, values = sys.argv[1], sys.argv[2:]
 names = ("orphan", "islands", "missed_links", "collision", "unindexed", "deadend",
-         "external_missing", "ignored_targets", "rubber_stamp", "missed_links_added", "okf_status")
+         "external_missing", "ignored_targets", "rubber_stamp", "missed_links_added", "okf_status",
+         "unknown_type", "uncheckable_sources_added")
 try:
     cfg = json.load(open(os.path.join(root, "wiki.config.json"), encoding="utf-8"))
 except (FileNotFoundError, ValueError, OSError):
@@ -227,6 +233,8 @@ if [ "$budget_rc" -ne 0 ]; then
       ignored_targets)    printf '%s\n' "$core"    | grep '^  IGNORED-TARGET ' ;;
       rubber_stamp)       printf '%s\n' "$rubber"  | grep '^  RUBBER-STAMP' ;;
       okf_status)         printf '%s\n' "$port"    | grep '^  PORT-STATUS ' ;;
+      unknown_type)       printf '%s\n' "$vocab"   | grep '^  UNKNOWN-TYPE ' ;;
+      uncheckable_sources_added) printf '%s\n' "$vocab" | grep '^  UNCHECKABLE-ADDED ' ;;
     esac
   done
   echo "${R}FAIL${Z} (configured advisory budget exceeded)"; exit 1

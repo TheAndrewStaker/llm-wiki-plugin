@@ -135,7 +135,7 @@ for f in wikilib.corpus_files(KB, cfg):
     d = os.path.dirname(f)
     raw = wikilib.read(KB, f)
     sources = set()
-    for s in wikilib.frontmatter_values(raw, "synthesized_from"):
+    for s in wikilib.frontmatter_sources(raw):
         sources.add(os.path.normpath(os.path.join(d, s)).replace(os.sep, "/"))
     in_fence = False
     for line in raw.split("\n"):
