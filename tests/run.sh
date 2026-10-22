@@ -950,6 +950,21 @@ assert_contains "blank line before block list is a valid list" "nonlist=0" "$por
 bash "$H/lint.sh" "$PORT_W" >/dev/null 2>&1; rc=$?
 assert "dup-key/tab hard gate fails lint" "1" "$rc"
 
+echo "--- a value cut at ' #' is flagged and hard-gated; quoted or mid-word '#' is fine ---"
+HW="$(mktemp -d)/wiki"
+mkdir -p "$HW/concepts"
+printf '%s\n' '---' 'type: concept' 'title: Fine' 'description: "PR #12 quoted"' 'aliases: [c#]' 'tags:' '  - "#chan"' '---' 'see [cut](cut.md)' > "$HW/concepts/fine.md"
+printf '%s\n' '---' 'type: concept' 'title: Review of PR #12' 'tags:' '  - #chan' '---' 'see [fine](fine.md)' > "$HW/concepts/cut.md"
+git -C "$HW" init -q && git -C "$HW" add -A
+hp=$(python3 "$H/frontmatter-portability.py" "$HW")
+assert_contains "a title cut at ' #' is flagged" "PORT-HASH concepts/cut.md ('title: Review of PR #12'" "$hp"
+assert_contains "a list item starting '#' is flagged" "PORT-HASH concepts/cut.md ('- #chan'" "$hp"
+assert "quoted values and mid-word '#' are not" "0" "$(printf '%s\n' "$hp" | grep -c 'PORT-HASH concepts/fine.md')"
+hl=$(WIKI_LINT_GATE_ONLY=1 bash "$H/lint.sh" "$HW" 2>&1); rc=$?
+assert "it fails the commit gate" "1" "$rc"
+assert_contains "naming the line" "PORT-HASH concepts/cut.md" "$hl"
+rm -rf "$(dirname "$HW")"
+
 echo "--- status: is OKF's lifecycle enum; other values are flagged, a budget gates them ---"
 STAT_W="$(mktemp -d)/wiki"
 mkdir -p "$STAT_W/concepts"
@@ -2860,6 +2875,8 @@ printf -- '---\ntype: concept\ntitle: A\nsynthesized_from:\n  - ../concepts/b.md
 assert "reordering and reformatting adds nothing" "0" "$(python3 "$H/vocab-check.py" "$VW" | grep -c UNCHECKABLE-ADDED)"
 printf -- '---\ntype: concept\ntitle: A\nsynthesized_from:\n  - ../concepts/b.md\n  - old prose\n  - source\n---\nsee [b](b.md)\n' > "$VW/concepts/a.md"
 assert "splitting an existing prose entry adds nothing" "0" "$(python3 "$H/vocab-check.py" "$VW" | grep -c UNCHECKABLE-ADDED)"
+printf -- '---\ntype: concept\ntitle: A\nsynthesized_from:\n  - ../concepts/b.md\n  - the prose source, old\n---\nsee [b](b.md)\n' > "$VW/concepts/a.md"
+assert "rewording an existing prose entry adds nothing" "0" "$(python3 "$H/vocab-check.py" "$VW" | grep -c UNCHECKABLE-ADDED)"
 printf -- '---\ntype: concept\ntitle: A\nsynthesized_from:\n  - ../concepts/b.md\n  - old prose source\n  - ../concepts/c.md\n  - https://example.com/x\n---\nsee [b](b.md)\n' > "$VW/concepts/a.md"
 assert "adding a path or URL adds nothing" "0" "$(python3 "$H/vocab-check.py" "$VW" | grep -c UNCHECKABLE-ADDED)"
 printf -- '---\ntype: concept\ntitle: A\nsynthesized_from: [old prose source, a hallway chat]\n---\nsee [b](b.md)\n' > "$VW/concepts/a.md"

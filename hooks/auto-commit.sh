@@ -110,7 +110,7 @@ else
   # any advisory counter a budget turned into a gate. The staged view is what gets judged.
   if [ -f "$H/lint.sh" ]; then
     fails=$(GIT_INDEX_FILE="$view" WIKI_CHECK_INDEX=1 WIKI_LINT_GATE_ONLY=1 bash "$H/lint.sh" "$KB" 2>/dev/null \
-      | grep -E '^  (INIT-FAIL|BROKEN LINK|UNRESOLVED|BADYAML|PORT-DUPKEY|PORT-TAB|PORT-STATUS|UNKNOWN-TYPE|UNCHECKABLE-ADDED|ORPHAN|UNINDEXED|DEADEND|MISSED-LINK-ADDED|IGNORED-TARGET) ' || true)
+      | grep -E '^  (INIT-FAIL|BROKEN LINK|UNRESOLVED|BADYAML|PORT-DUPKEY|PORT-TAB|PORT-HASH|PORT-STATUS|UNKNOWN-TYPE|UNCHECKABLE-ADDED|ORPHAN|UNINDEXED|DEADEND|MISSED-LINK-ADDED|IGNORED-TARGET) ' || true)
     if [ -n "$fails" ]; then
       files=$(printf '%s\n' "$fails" | sed -E 's/^  (BROKEN LINK|[A-Z-]+) ([^ ]+).*/\2/' | sort -u)
       if [ -n "$transcript" ] && [ -f "$transcript" ]; then

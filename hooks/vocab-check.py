@@ -7,8 +7,9 @@ gate through advisory_budgets (unknown_type, uncheckable_sources_added).
                       was not on the page before this change: staged against HEAD under
                       WIKI_CHECK_INDEX=1, else the working tree against HEAD. Entries are
                       compared as a parsed set, so reordering or reformatting a list adds
-                      nothing, and neither does splitting an existing prose entry into
-                      pieces; a renamed page is compared with its old path.
+                      nothing, and neither does splitting or rewording an existing prose
+                      entry (most of its words already appear in the page's old frontmatter);
+                      a renamed page is compared with its old path.
 
 Standalone: python3 hooks/vocab-check.py [WIKI_ROOT]
 Ends with: VOCAB unknown_type=<n> uncheckable_added=<n>
@@ -35,6 +36,15 @@ def fm(text):
 
 def norm(entry):
     return re.sub(r"\s+", " ", entry).strip()
+
+
+def words(text):
+    return set(re.findall(r"[a-z0-9]+", text.lower()))
+
+
+def reworded(entry, old_words):
+    w = words(entry)
+    return bool(w) and len(w & old_words) / len(w) >= 0.6
 
 
 unknown = 0
@@ -70,9 +80,9 @@ for f in sorted(set(changed)):
         continue
     old_block = fm(wikilib.git_text(KB, renames.get(f, f), "HEAD"))
     before = {norm(e) for e in wikilib.fm_sources(old_block)} if old_block else set()
-    blob = " | ".join(sorted(before))
+    old_words = words(old_block or "")
     gained = [e for e in wikilib.fm_sources(block) if wikilib.citation_kind(e) == "freetext"
-              and norm(e) not in before and norm(e) not in blob]
+              and norm(e) not in before and not reworded(e, old_words)]
     if gained:
         print(f"  UNCHECKABLE-ADDED {f} ({len(gained)}: {'; '.join(gained)[:80]}) cite a path or URL")
         added += 1

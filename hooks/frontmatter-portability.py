@@ -25,6 +25,8 @@ Checks (frontmatter block only, per tracked page):
               never truncate it.
   TITLECOLON  unquoted title:/description: containing ": " -- parses as a nested
               mapping or errors, silently breaking the page's whole frontmatter
+  HASH        an unquoted value or list item cut short by ' #' (or starting with '#'): YAML
+              reads the rest as a comment, so the value is truncated or the item is null
   STATUS      status: outside OKF's draft|stable|deprecated; OKF reserves the key, so a
               free-text value misreads as a lifecycle state in any OKF consumer
 
@@ -35,7 +37,7 @@ round-trip the same text and the lint/catalog layer only ever compares text.
 Advisory only, always exits 0; lint.sh decides the gate. Standalone:
     python3 hooks/frontmatter-portability.py [WIKI_ROOT]
 Ends with a machine line:
-    PORT dupkey=<n> tab=<n> ambig=<n> singular=<n> nonlist=<n> desc=<n> titlecolon=<n> status=<n>
+    PORT dupkey=<n> tab=<n> ambig=<n> singular=<n> nonlist=<n> desc=<n> titlecolon=<n> status=<n> hash=<n>
 """
 import os
 import re
@@ -58,7 +60,7 @@ folded = re.compile(r"^[>|][+-]?\d*$")
 OKF_STATUS = {"draft", "stable", "deprecated"}
 PLURAL = {"tag": "tags", "alias": "aliases", "cssclass": "cssclasses"}
 
-dupkey = tab = ambig = singular = nonlist = desc = titlecolon = status = 0
+dupkey = tab = ambig = singular = nonlist = desc = titlecolon = status = hashcut = 0
 issues = []
 
 
@@ -80,6 +82,12 @@ for f in files:
         flag("TAB", f, "tab character in frontmatter; YAML forbids tab indentation")
         tab += 1
     seen = {}
+    for line in lines:
+        item = re.match(r"^\s*-\s+(.*)$", line) or keyline.match(line)
+        raw = (item.group(item.lastindex) if item else "").strip()
+        if raw and raw[0] not in "'\"[{|>" and (raw.startswith("#") or re.search(r"\s#", raw)):
+            flag("HASH", f, f"'{line.strip()[:50]}' is cut at ' #' (YAML comment); quote the value")
+            hashcut += 1
     for i, line in enumerate(lines):
         km = keyline.match(line)
         if not km:
@@ -137,4 +145,4 @@ for f in files:
 for line in issues:
     print(line)
 print(f"PORT dupkey={dupkey} tab={tab} ambig={ambig} singular={singular} "
-      f"nonlist={nonlist} desc={desc} titlecolon={titlecolon} status={status}")
+      f"nonlist={nonlist} desc={desc} titlecolon={titlecolon} status={status} hash={hashcut}")

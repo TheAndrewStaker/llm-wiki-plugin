@@ -12,6 +12,8 @@ This project follows Keep a Changelog and intends to use Semantic Versioning aft
   free-text `synthesized_from` entries a change adds; budgets `unknown_type`,
   `uncheckable_sources_added`.
 - Lint flags a `status:` outside OKF's `draft|stable|deprecated` (`PORT-STATUS`, budget `okf_status`).
+- `PORT-HASH`, hard-gated: an unquoted frontmatter value cut at ` #`, or a list item starting `#`,
+  which YAML reads as a comment (truncated value or null item).
 
 ### Changed
 

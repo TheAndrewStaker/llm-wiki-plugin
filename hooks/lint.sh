@@ -77,7 +77,7 @@ init=$(python3 "$H/initiative-check.py" "$KB" 2>/dev/null || true)
 if [ "$gate_only" = "1" ]; then
   # Only the lines that can fail the commit, so a blocked commit names its cause.
   printf '%s\n' "$core" "$port" "$init" \
-    | grep -E '^  (BROKEN|UNRESOLVED|BADYAML|INIT-FAIL|PORT-DUPKEY|PORT-TAB) ' || true
+    | grep -E '^  (BROKEN|UNRESOLVED|BADYAML|INIT-FAIL|PORT-DUPKEY|PORT-TAB|PORT-HASH) ' || true
   exec 3>&1 1>/dev/null
 fi
 echo "${C}== knowledge-base lint ==${Z}"
@@ -126,6 +126,7 @@ rs=$(printf '%s\n' "$rubber" | sed -n 's/^RUBBER-STAMP=\([0-9]*\).*/\1/p')
 vn=$(printf '%s\n' "$vendor" | sed -n 's/^VENDOR=//p')
 dk=$(printf '%s\n' "$port"   | sed -n 's/^PORT dupkey=\([0-9]*\).*/\1/p')
 tb=$(printf '%s\n' "$port"   | sed -n 's/^PORT [^ ]* tab=\([0-9]*\).*/\1/p')
+hc=$(printf '%s\n' "$port"   | sed -n 's/.* hash=\([0-9]*\).*/\1/p')
 pa=$(printf '%s\n' "$port"   | sed -n 's/.* ambig=\([0-9]*\).*/\1/p')
 pd=$(printf '%s\n' "$port"   | sed -n 's/.* desc=\([0-9]*\).*/\1/p')
 os=$(printf '%s\n' "$port"   | sed -n 's/.* status=\([0-9]*\).*/\1/p')
@@ -134,7 +135,7 @@ ua=$(printf '%s\n' "$vocab"  | sed -n 's/.* uncheckable_added=\([0-9]*\).*/\1/p'
 ng=$(printf '%s\n' "$neigh"  | sed -n 's/^NEIGHBORS=//p')
 ic=$(printf '%s\n' "$init"   | sed -n 's/^INIT-FAIL=\([0-9]*\).*/\1/p')
 
-summary_line="broken-links:${b:-?}  external:${ex:-?}/${em:-?}  ignored-targets:${ig:-?}  unresolved:${u:-?}  bad-yaml:${by:-?}  orphans:${orp:-?}  islands:${islands:-?}  missed-links:${ml:-?}  missed-links-added:${mla:--}  no-type:${nt:-?}  stale:${st:-?}  collisions:${col:-?}  unindexed:${unx:-?}  missing-fields:${mf:-?}  dead-ends:${de:-?}  stale-pointers:${sp:-?}  chains:${ch:-?}  wanted:${wp:-?}  inbox:${ib:-?}  drift:${dr:-?}  rubber-stamp:${rs:-?}  dup-keys:${dk:-?}  fm-tabs:${tb:-?}  ambig-yaml:${pa:-?}  desc-quality:${pd:-?}  okf-status:${os:-?}  unknown-type:${ut:-?}  uncheckable-added:${ua:-?}  neighbors:${ng:-?}  vendor:${vn:-?}  init-fail:${ic:-?}"
+summary_line="broken-links:${b:-?}  external:${ex:-?}/${em:-?}  ignored-targets:${ig:-?}  unresolved:${u:-?}  bad-yaml:${by:-?}  orphans:${orp:-?}  islands:${islands:-?}  missed-links:${ml:-?}  missed-links-added:${mla:--}  no-type:${nt:-?}  stale:${st:-?}  collisions:${col:-?}  unindexed:${unx:-?}  missing-fields:${mf:-?}  dead-ends:${de:-?}  stale-pointers:${sp:-?}  chains:${ch:-?}  wanted:${wp:-?}  inbox:${ib:-?}  drift:${dr:-?}  rubber-stamp:${rs:-?}  dup-keys:${dk:-?}  fm-tabs:${tb:-?}  fm-hash:${hc:-?}  ambig-yaml:${pa:-?}  desc-quality:${pd:-?}  okf-status:${os:-?}  unknown-type:${ut:-?}  uncheckable-added:${ua:-?}  neighbors:${ng:-?}  vendor:${vn:-?}  init-fail:${ic:-?}"
 echo "${C}== summary ==${Z}  ${summary_line}"
 
 # Gate-only restores stdout here, so only the verdict lines below print.
@@ -157,10 +158,10 @@ fi
 if [ "$b" -gt 0 ] || [ "$u" -gt 0 ] || [ "$by" -gt 0 ]; then
   echo "${R}FAIL${Z} (broken links, unresolved tokens, or malformed YAML frontmatter)"; exit 1
 fi
-# Duplicate keys and tabs silently corrupt frontmatter in every parser -> hard gate.
+# Duplicate keys, tabs and values cut at ' #' silently corrupt frontmatter in every parser -> hard gate.
 # (Counts parsed from the PORT line; if the script crashed they are empty and we stay advisory.)
-if [ -n "${dk:-}" ] && [ -n "${tb:-}" ] && { [ "$dk" -gt 0 ] || [ "$tb" -gt 0 ]; }; then
-  echo "${R}FAIL${Z} (duplicate frontmatter keys or tab indentation -- parsers silently drop data)"; exit 1
+if [ -n "${dk:-}" ] && [ -n "${tb:-}" ] && { [ "$dk" -gt 0 ] || [ "$tb" -gt 0 ] || [ "${hc:-0}" -gt 0 ]; }; then
+  echo "${R}FAIL${Z} (duplicate frontmatter keys, tab indentation, or a value cut at ' #' -- parsers silently drop data)"; exit 1
 fi
 # Initiative schema, Inbox tombstone and STATE.md word budget: hard-gated the same way, not
 # through advisory_budgets (that block is a closed, hardcoded tuple of unrelated counters).
