@@ -7,7 +7,8 @@ gate through advisory_budgets (unknown_type, uncheckable_sources_added).
                       was not on the page before this change: staged against HEAD under
                       WIKI_CHECK_INDEX=1, else the working tree against HEAD. Entries are
                       compared as a parsed set, so reordering or reformatting a list adds
-                      nothing; a renamed page is compared with its old path.
+                      nothing, and neither does splitting an existing prose entry into
+                      pieces; a renamed page is compared with its old path.
 
 Standalone: python3 hooks/vocab-check.py [WIKI_ROOT]
 Ends with: VOCAB unknown_type=<n> uncheckable_added=<n>
@@ -69,7 +70,9 @@ for f in sorted(set(changed)):
         continue
     old_block = fm(wikilib.git_text(KB, renames.get(f, f), "HEAD"))
     before = {norm(e) for e in wikilib.fm_sources(old_block)} if old_block else set()
-    gained = [e for e in wikilib.fm_sources(block) if wikilib.citation_kind(e) == "freetext" and norm(e) not in before]
+    blob = " | ".join(sorted(before))
+    gained = [e for e in wikilib.fm_sources(block) if wikilib.citation_kind(e) == "freetext"
+              and norm(e) not in before and norm(e) not in blob]
     if gained:
         print(f"  UNCHECKABLE-ADDED {f} ({len(gained)}: {'; '.join(gained)[:80]}) cite a path or URL")
         added += 1
