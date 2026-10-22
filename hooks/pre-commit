@@ -54,4 +54,8 @@ fi
 
 # WIKI_CHECK_INDEX: the initiative gate judges the staged version, so a page an
 # auto-commit holds back does not block the files it does commit.
-WIKI_CHECK_INDEX=1 "$H/lint.sh" "$KB"
+# WIKI_LINT_HOOKS: the engine that already judged this change (auto-commit passes its own), so
+# the check and the commit gate cannot disagree while a vendored copy lags the plugin.
+L="${WIKI_LINT_HOOKS:-$H}"
+[ -f "$L/lint.sh" ] || L="$H"
+WIKI_CHECK_INDEX=1 "$L/lint.sh" "$KB"

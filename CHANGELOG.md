@@ -17,6 +17,12 @@ This project follows Keep a Changelog and intends to use Semantic Versioning aft
 
 ### Changed
 
+- auto-commit: a page the commit gate names after the hook's own check (the tree moved, or the
+  engines differed) is held back and the rest commits; only the session that wrote it is told, and
+  a failure naming no page is still reported. Every hold, block and failure is appended to
+  `.git/compendium/auto-commit.log`.
+- pre-commit runs the lint engine named by `WIKI_LINT_HOOKS` when set; auto-commit passes its own,
+  so its check and the commit gate cannot disagree while a vendored copy lags the plugin.
 - Signal pages use `stage:` instead of `status:`, which OKF reserves.
 - `synthesized_from` is parsed by `wikilib.fm_sources` everywhere: folded scalars, quoted commas
   and comma-separated paths no longer read as one bogus path, and a bare word is free text.

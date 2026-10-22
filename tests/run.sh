@@ -2936,6 +2936,73 @@ assert "the bystander commits its file" "concepts/other.txt" "$(git -C "$VW" sho
 assert "and holds the unknown-type page back" "?? concepts/d.md" "$(git -C "$VW" status --short concepts/d.md)"
 rm -rf "$(dirname "$VW")"
 
+echo "--- auto-commit: a page the commit gate names late is held back, the rest commits, all logged ---"
+LW="$(mktemp -d)/wiki"
+mkdir -p "$LW/concepts" "$LW/hooks"
+printf -- '---\ntype: concept\ntitle: A\n---\nsee [b](b.md) and [late](late.md)\n' > "$LW/concepts/a.md"
+printf -- '---\ntype: concept\ntitle: B\n---\nsee [a](a.md)\n' > "$LW/concepts/b.md"
+printf -- '---\ntype: concept\ntitle: Late\n---\nsee [a](a.md)\n' > "$LW/concepts/late.md"
+git -C "$LW" init -q
+git -C "$LW" add -A
+git -C "$LW" -c user.name=t -c user.email=t@t commit -qm one
+# The commit gate fails on late.md whenever it is staged with a change: the race in which the
+# tree moved between the hook's check and its commit.
+cat > "$LW/hooks/pre-commit" <<'HOOK'
+#!/usr/bin/env bash
+if git diff --cached --name-only | grep -qx concepts/late.md; then
+  echo "  BROKEN LINK concepts/late.md -> gone.md"; exit 1
+fi
+if git diff --cached --name-only | grep -qx concepts/boom.md; then echo "lint crashed"; exit 2; fi
+exit 0
+HOOK
+chmod +x "$LW/hooks/pre-commit"
+git -C "$LW" add hooks/pre-commit
+git -C "$LW" -c user.name=t -c user.email=t@t commit -qm hook
+git -C "$LW" config core.hooksPath hooks
+git -C "$LW" config user.name t; git -C "$LW" config user.email t@t
+LT="$(dirname "$LW")/writer.jsonl"; LR="$(dirname "$LW")/reader.jsonl"
+python3 - "$LT" "$LR" "$LW" <<'PYEOF'
+import json, sys
+lt, lr, lw = sys.argv[1:4]
+use = lambda n, i: json.dumps({"type": "assistant", "message": {"content": [{"type": "tool_use", "name": n, "input": i}]}}) + "\n"
+open(lt, "w").write(use("Write", {"file_path": lw + "/concepts/late.md"}))
+open(lr, "w").write(use("Write", {"file_path": lw + "/concepts/b.md"}))
+PYEOF
+printf 'more\n' >> "$LW/concepts/late.md"
+printf 'more\n' >> "$LW/concepts/b.md"
+head0=$(git -C "$LW" rev-parse HEAD)
+out=$(printf '{"hook_event_name":"Stop","stop_hook_active":false,"transcript_path":"%s"}' "$LR" \
+  | WIKI_ROOT="$LW" bash "$H/auto-commit.sh" 2>&1); rc=$?
+assert "a bystander exits 0 when the commit gate names another page" "0" "$rc"
+assert "and prints no error" "" "$out"
+assert "the bystander's page commits" "concepts/b.md" "$(git -C "$LW" show --name-only --format= HEAD)"
+assert "the late page is held back" " M concepts/late.md" "$(git -C "$LW" status --short concepts/late.md)"
+assert_contains "the breadcrumb names it" "concepts/late.md" "$(cat "$LW/.auto-commit-failed")"
+assert_contains "the event is logged" "held back by the commit gate" "$(cat "$LW/.git/compendium/auto-commit.log")"
+out=$(printf '{"hook_event_name":"Stop","stop_hook_active":false,"transcript_path":"%s"}' "$LT" \
+  | WIKI_ROOT="$LW" bash "$H/auto-commit.sh" 2>&1); rc=$?
+assert "the writer of the late page is blocked once" "2" "$rc"
+assert_contains "with the failing line" "BROKEN LINK concepts/late.md" "$out"
+assert_contains "the block is logged" "writer blocked by the commit gate" "$(cat "$LW/.git/compendium/auto-commit.log")"
+git -C "$LW" show HEAD:concepts/late.md > "$LW/concepts/late.md"
+printf -- '---\ntype: concept\ntitle: Boom\n---\nsee [a](a.md)\n' > "$LW/concepts/boom.md"
+printf -- '\nsee [boom](boom.md)\n' >> "$LW/concepts/a.md"
+out=$(printf '{"hook_event_name":"Stop","stop_hook_active":false,"transcript_path":"%s"}' "$LR" \
+  | WIKI_ROOT="$LW" bash "$H/auto-commit.sh" 2>&1); rc=$?
+assert "a failure naming no page is still reported" "1" "$rc"
+assert_contains "as a failure" "auto-commit FAILED" "$out"
+assert_contains "and logged with its output" "lint crashed" "$(cat "$LW/.git/compendium/auto-commit.log")"
+PW2="$(mktemp -d)"; mkdir -p "$PW2/eng" "$PW2/repo/hooks"
+cp "$H/pre-commit" "$PW2/repo/hooks/pre-commit"
+printf '#!/usr/bin/env bash\necho vendored; exit 0\n' > "$PW2/repo/hooks/lint.sh"
+printf '#!/usr/bin/env bash\necho engine; exit 0\n' > "$PW2/eng/lint.sh"
+chmod +x "$PW2/repo/hooks/lint.sh" "$PW2/eng/lint.sh"
+git -C "$PW2/repo" init -q
+assert "the commit gate runs the engine it is handed" "engine" "$(cd "$PW2/repo" && WIKI_COMMIT=1 WIKI_LINT_HOOKS="$PW2/eng" bash hooks/pre-commit 2>/dev/null)"
+assert "and its own copy otherwise" "vendored" "$(cd "$PW2/repo" && WIKI_COMMIT=1 bash hooks/pre-commit 2>/dev/null)"
+rm -rf "$PW2"
+rm -rf "$(dirname "$LW")"
+
 echo
 echo "======================================"
 echo "  PASS=$pass  FAIL=$fail"

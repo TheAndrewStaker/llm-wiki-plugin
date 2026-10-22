@@ -64,6 +64,17 @@ finish() { # finish <rc>: the guard's block comes after whatever was committed
 [ "$auto_commit" = "true" ] || finish 0
 
 held=""; mine=""; fails=""
+GATE_RE='^[[:space:]]*(INIT-FAIL|BROKEN LINK|UNRESOLVED|BADYAML|PORT-DUPKEY|PORT-TAB|PORT-HASH|PORT-STATUS|UNKNOWN-TYPE|UNCHECKABLE-ADDED|ORPHAN|UNINDEXED|DEADEND|MISSED-LINK-ADDED|IGNORED-TARGET) '
+gate_pages() { sed -E 's/^[[:space:]]*(BROKEN LINK|[A-Z-]+) ([^ ]+).*/\2/' | sort -u; }
+log_event() { # log_event <what> <detail>: machine-local, newest 500 lines kept
+  local d; d="$(git rev-parse --absolute-git-dir 2>/dev/null)/compendium"
+  mkdir -p "$d" 2>/dev/null || return 0
+  { printf '%s\t%s\t%s\t%s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$event" "${transcript##*/}" "$1"
+    printf '%s\n' "$2" | sed 's/^/\t/'; } >> "$d/auto-commit.log" 2>/dev/null
+  tail -n 500 "$d/auto-commit.log" > "$d/auto-commit.log.tmp" 2>/dev/null \
+    && mv "$d/auto-commit.log.tmp" "$d/auto-commit.log" 2>/dev/null
+  return 0
+}
 # Stop and SessionEnd can fire together. Serialize the whole add/commit/push transaction.
 lock="$(git rev-parse --git-dir)/wiki-auto-commit.lock"
 if ! mkdir "$lock" 2>/dev/null; then
@@ -110,15 +121,16 @@ else
   # any advisory counter a budget turned into a gate. The staged view is what gets judged.
   if [ -f "$H/lint.sh" ]; then
     fails=$(GIT_INDEX_FILE="$view" WIKI_CHECK_INDEX=1 WIKI_LINT_GATE_ONLY=1 bash "$H/lint.sh" "$KB" 2>/dev/null \
-      | grep -E '^  (INIT-FAIL|BROKEN LINK|UNRESOLVED|BADYAML|PORT-DUPKEY|PORT-TAB|PORT-HASH|PORT-STATUS|UNKNOWN-TYPE|UNCHECKABLE-ADDED|ORPHAN|UNINDEXED|DEADEND|MISSED-LINK-ADDED|IGNORED-TARGET) ' || true)
+      | grep -E "$GATE_RE" || true)
     if [ -n "$fails" ]; then
-      files=$(printf '%s\n' "$fails" | sed -E 's/^  (BROKEN LINK|[A-Z-]+) ([^ ]+).*/\2/' | sort -u)
+      files=$(printf '%s\n' "$fails" | gate_pages)
       if [ -n "$transcript" ] && [ -f "$transcript" ]; then
         # shellcheck disable=SC2086
         mine=$(python3 "$H/session-touched.py" "$transcript" "$KB" $files 2>/dev/null || true)
       fi
       if [ -n "$mine" ] && [ "$event" = "Stop" ] && [ "$stop_active" = "false" ]; then
         rm -f "$view"
+        log_event "writer blocked by the commit gate" "$fails"
         {
           echo "wiki: pages this session wrote fail the commit gate, so nothing was committed:"
           printf '%s\n' "$fails" | grep -F -f <(printf '%s\n' "$mine")
@@ -129,6 +141,7 @@ else
         exit 2
       fi
       held=$files
+      log_event "held back by the commit gate" "$fails"
     fi
   fi
 
@@ -146,10 +159,46 @@ else
   else
     paths=()
     while IFS= read -r p; do [ -n "$p" ] && paths+=("$p"); done <<< "$changed"
-    if out=$(WIKI_LINT_GATE_ONLY=1 python3 "$H/../bin/wiki-commit" --root "$KB" \
-          -m "session auto-save: wiki findings ($(date +%Y-%m-%d))" -- "${paths[@]}" 2>&1); then
+    # The commit re-reads the tree, which another session may have changed since the check
+    # above. A page the commit gate then names is held back like any other, and the rest
+    # commits; only a failure that names no committed page is reported as one.
+    committed=false; tries=0
+    while [ "${#paths[@]}" -gt 0 ] && [ "$tries" -lt 4 ]; do
+      tries=$((tries + 1))
+      if out=$(WIKI_LINT_GATE_ONLY=1 WIKI_LINT_HOOKS="$H" python3 "$H/../bin/wiki-commit" --root "$KB" \
+            -m "session auto-save: wiki findings ($(date +%Y-%m-%d))" -- "${paths[@]}" 2>&1); then
+        committed=true; break
+      fi
+      late=$(printf '%s\n' "$out" | grep -E "$GATE_RE" || true)
+      bad=$(printf '%s\n' "$late" | gate_pages | grep -xF -f <(printf '%s\n' "${paths[@]}") || true)
+      [ -n "$bad" ] || break
+      if [ -n "$transcript" ] && [ -f "$transcript" ]; then
+        # shellcheck disable=SC2086
+        late_mine=$(python3 "$H/session-touched.py" "$transcript" "$KB" $bad 2>/dev/null || true)
+        if [ -n "$late_mine" ] && [ "$event" = "Stop" ] && [ "$stop_active" = "false" ]; then
+          log_event "writer blocked by the commit gate" "$late"
+          {
+            echo "wiki: pages this session wrote fail the commit gate, so nothing was committed:"
+            printf '%s\n' "$late" | grep -F -f <(printf '%s\n' "$late_mine") | sed 's/^[[:space:]]*/  /'
+            echo "Fix them now: frontmatter with wiki-fm set <page> <field>=<value> (it validates"
+            echo "before writing); a missing index line, link or target by editing the page named."
+            [ -n "$guard_msg" ] && printf '%s\n' "$guard_msg"
+          } >&2
+          exit 2
+        fi
+        mine=$(printf '%s\n%s\n' "$mine" "$late_mine" | sed '/^$/d' | sort -u)
+      fi
+      log_event "held back by the commit gate" "$late"
+      held=$(printf '%s\n%s\n' "$held" "$bad" | sed '/^$/d' | sort -u)
+      fails=$(printf '%s\n%s\n' "$fails" "$late" | sed '/^$/d')
+      keep=()
+      for p in "${paths[@]}"; do printf '%s\n' "$bad" | grep -qxF "$p" || keep+=("$p"); done
+      paths=("${keep[@]+"${keep[@]}"}")
+    done
+    if [ "$committed" = "true" ] || [ "${#paths[@]}" -eq 0 ]; then
       rm -f "$KB/.auto-commit-failed"
     else
+      log_event "commit failed" "$out"
       {
         echo "auto-commit failed $(date '+%Y-%m-%d %H:%M') -- commit aborted, changes remain uncommitted"
         printf '%s\n' "$out"
@@ -162,7 +211,7 @@ fi
 
 if [ -n "$held" ]; then
   {
-    echo "auto-commit held back $(date '+%Y-%m-%d %H:%M') -- these pages fail the initiative gate and stay uncommitted:"
+    echo "auto-commit held back $(date '+%Y-%m-%d %H:%M') -- these pages fail the commit gate and stay uncommitted:"
     printf '%s\n' "$fails"
     echo "Fix with: wiki-fm set <page> <field>=<value>"
   } > "$KB/.auto-commit-failed"
