@@ -263,6 +263,20 @@ def state_dir(kb):
     return os.path.join(gd, "compendium") if gd else os.path.join(kb, ".compendium")
 
 
+def strip_yaml_comment(line):
+    """A YAML line without its trailing comment: a `#` after whitespace, outside quotes."""
+    quote = None
+    for i, ch in enumerate(line):
+        if quote:
+            if ch == quote:
+                quote = None
+        elif ch in "\"'":
+            quote = ch
+        elif ch == "#" and (i == 0 or line[i - 1] in " \t"):
+            return line[:i].rstrip()
+    return line
+
+
 def frontmatter_value(text, key):
     # [ \t]* not \s*: \s crosses the newline, so a key with a block list below it returns
     # that list's first item (marker attached), and an empty key returns the NEXT key's value.
@@ -373,7 +387,7 @@ def initiative_issues(schema, fm, prev_fm=None, active_count=None):
         m = re.search(rf"^{re.escape(field)}:[ \t]*(.*)$", fm, re.M)
         if not m:
             continue
-        val = re.sub(r"\s+#.*$", "", m.group(1)).strip()
+        val = strip_yaml_comment(m.group(1)).strip()
         if val == "":
             if not re.search(rf"^{re.escape(field)}:[ \t]*\n(?:[ \t]+- .*\n?)+", fm + "\n", re.M):
                 out.append((field, "must be a list: [\"a\", \"b\"] or a block of '  - ' items"))
