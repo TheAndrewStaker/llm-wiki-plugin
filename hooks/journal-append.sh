@@ -15,6 +15,12 @@ else
 fi
 KB="${KB/#\~/$HOME}"
 [ -n "$LINE" ] || { echo "journal-append: no line given" >&2; exit 2; }
+# A relative or missing root would create a stray journal/ wherever the caller stands.
+case "$KB" in
+  /*) ;;
+  *) echo "journal-append: wiki root must be an absolute path, got '$KB' (usage: journal-append.sh [WIKI_ROOT] LINE)" >&2; exit 2 ;;
+esac
+[ -d "$KB" ] || { echo "journal-append: wiki root '$KB' does not exist" >&2; exit 2; }
 
 DIR="$KB/journal"
 mkdir -p "$DIR"

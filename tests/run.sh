@@ -2114,6 +2114,15 @@ assert "exactly one journal file for today" "1" "$(ls "$JW/journal/$today.md" 2>
 assert_contains "it carries type: journal frontmatter" "type: journal" "$(cat "$JW/journal/$today.md")"
 assert "both lines landed" "2" "$(grep -c '^- ' "$JW/journal/$today.md")"
 
+echo "--- journal-append.sh: refuses a relative or missing wiki root ---"
+RW="$(mktemp -d)"
+( cd "$RW" && "$H/journal-append.sh" "slug" "09:00 · demo · misplaced" >/dev/null 2>&1 ); rel_rc=$?
+assert "a relative root is refused" "yes" "$([ "$rel_rc" -ne 0 ] && echo yes || echo no)"
+assert "no stray journal is created" "0" "$([ -d "$RW/slug" ] && echo 1 || echo 0)"
+"$H/journal-append.sh" "$RW/missing" "09:00 · demo · misplaced" >/dev/null 2>&1; miss_rc=$?
+assert "a missing root is refused" "yes" "$([ "$miss_rc" -ne 0 ] && echo yes || echo no)"
+rm -rf "$RW"
+
 echo "--- journal-append.sh: 20 concurrent writers, no line lost, lock released ---"
 CW="$(mktemp -d)/wiki"; mkdir -p "$CW"
 for i in $(seq 1 20); do
