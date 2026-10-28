@@ -107,7 +107,7 @@ def bad_yaml_keys(fm_text):
                     and not keyline.match(lines[j + 1]) and lines[j + 1].strip():
                 j += 1
                 acc += " " + lines[j].strip()
-            acc = re.sub(r"\s+#.*$", "", acc).strip()   # drop a trailing comment
+            acc = wikilib.strip_yaml_comment(acc).strip()
             if acc.count(openc) != acc.count(closec) or not acc.endswith(closec):
                 bad.append(key)
             i = j + 1

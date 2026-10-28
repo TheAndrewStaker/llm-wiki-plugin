@@ -2398,6 +2398,7 @@ $FM set "$TW/initiatives/a.md" 'prs=["org/repo#2"]' >/dev/null 2>&1
 assert "a flow list passes" "INIT-FAIL=0" "$(python3 "$H/initiative-check.py" "$TW" | tail -1)"
 $FM set "$TW/initiatives/a.md" 'prs=["org/repo#2", "org/repo#3 after #2"]' >/dev/null 2>&1
 assert "a # inside a quoted list item is not a comment" "INIT-FAIL=0" "$(python3 "$H/initiative-check.py" "$TW" | tail -1)"
+assert "nor malformed YAML to the linter" "" "$(python3 "$H/lint-core.py" "$TW" 2>&1 | grep 'BADYAML initiatives/a.md')"
 printf -- '---\ntype: initiative\ntitle: c\ntimestamp: 2026-01-01\nassignment_kind: self\nassignment_status: planning\nnext: x\nwaiting_on: none\nprs:\n  - org/repo#3\n---\nbody\n' > "$TW/initiatives/c.md"
 git -C "$TW" add initiatives/c.md
 assert "a block list passes" "INIT-FAIL=0" "$(python3 "$H/initiative-check.py" "$TW" | tail -1)"
