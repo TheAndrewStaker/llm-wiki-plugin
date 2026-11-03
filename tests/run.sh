@@ -1113,6 +1113,15 @@ printf '{}\n' | WIKI_ROOT="$AUTO_TMP" bash "$H/auto-commit.sh" >/dev/null 2>&1; 
 assert "a blocked commit still fails loudly" "1" "$rc"
 assert "a blocked commit leaves the breadcrumb" "yes" \
   "$([ -e "$AUTO_TMP/.auto-commit-failed" ] && echo yes || echo no)"
+printf 'codex edit\n' >> "$AUTO_TMP/page.md"
+rm -f "$AUTO_TMP/.auto-commit-failed"
+before=$(git -C "$AUTO_TMP" rev-parse HEAD)
+printf '{"hook_event_name":"Stop","turn_id":"t1","model":"m","stop_hook_active":false}\n' \
+  | WIKI_ROOT="$AUTO_TMP" bash "$H/auto-commit.sh" >/dev/null 2>&1; rc=$?
+assert "a Codex Stop payload is a clean no-op" "0" "$rc"
+assert "a Codex Stop payload commits nothing" "$before" "$(git -C "$AUTO_TMP" rev-parse HEAD)"
+assert "a Codex Stop payload leaves no breadcrumb" "no" \
+  "$([ -e "$AUTO_TMP/.auto-commit-failed" ] && echo yes || echo no)"
 rm -rf "$AUTO_TMP"
 
 echo "--- a commit leaves a clean tree: the lint history is machine-local ---"

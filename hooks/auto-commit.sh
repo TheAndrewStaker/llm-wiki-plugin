@@ -14,6 +14,11 @@
 set -uo pipefail
 
 input=$(cat 2>/dev/null || true)
+# Codex runs this same hook file, but its edits to the wiki are not this hook's to commit, and
+# a non-zero exit here is shown as "Stop Failed" on every turn. A Codex payload carries a
+# turn_id and a model; Claude Code's Stop and SessionEnd payloads carry neither.
+case "$input" in *'"turn_id"'*|*'"model"'*) exit 0 ;; esac
+[ -n "${CODEX_THREAD_ID:-}" ] && exit 0
 stop_active=false
 case "$input" in *'"stop_hook_active":true'*|*'"stop_hook_active": true'*) stop_active=true ;; esac
 event=Stop
