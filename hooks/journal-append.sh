@@ -53,7 +53,20 @@ cleanup_lock() {
 }
 trap cleanup_lock EXIT INT TERM
 
+new_day=0
 if [ ! -s "$FILE" ]; then
   printf -- '---\ntype: journal\ntimestamp: %s\n---\n\n' "$DATE" > "$FILE"
+  new_day=1
 fi
 printf -- '- %s\n' "$LINE" >> "$FILE"
+
+# journal/index.md links every day, newest first, so day pages are reachable in the link graph.
+INDEX="$DIR/index.md"
+if [ "$new_day" -eq 1 ] || [ ! -f "$INDEX" ]; then
+  {
+    printf -- '---\ntype: index\ntitle: Journal\n---\n\n# Journal\n\n'
+    for f in $(ls "$DIR" | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}\.md$' | sort -r); do
+      printf -- '- [%s](%s)\n' "${f%.md}" "$f"
+    done
+  } > "$INDEX.tmp.$$" && mv "$INDEX.tmp.$$" "$INDEX"
+fi

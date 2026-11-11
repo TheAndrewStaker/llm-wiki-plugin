@@ -87,6 +87,17 @@ def attempt(kb, message, paths, everything):
                 pass
 
 
+def gate_log(kb, attempt_id, sha):
+    """Record the commit an attempt produced, next to the hook's own gate lines."""
+    try:
+        d = git(kb, "rev-parse", "--git-dir").stdout.strip()
+        with open(os.path.join(kb, d, "wiki-gate.log"), "a", encoding="utf-8") as fh:
+            fh.write(f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}\t{attempt_id}"
+                     f"\tcommitted\t\t{sha}\n")
+    except OSError:
+        pass
+
+
 def sync_shared(kb, base):
     """Point the shared index at HEAD for each committed path it still holds at the old
     version, so the session's own commit does not show as staged-in-reverse."""
@@ -106,10 +117,12 @@ def main():
     if not a.all and not a.paths:
         ap.error("give PATH... or --all")
     kb = root(a.root)
+    os.environ.setdefault("WIKI_GATE_ATTEMPT", f"{os.getpid()}-{int(time.time())}")
     for n in range(6):
         status, detail = attempt(kb, a.message, a.paths, a.all)
         if status == "ok":
             sync_shared(kb, detail)
+            gate_log(kb, os.environ["WIKI_GATE_ATTEMPT"], blob(kb, "HEAD")[:8])
             print(f"committed {blob(kb, 'HEAD')[:8]}: {a.message.splitlines()[0]}")
             return 0
         if status == "empty":

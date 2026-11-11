@@ -74,6 +74,8 @@ def load_initiatives(kb):
             "priority_set": wikilib.frontmatter_value(fm, "priority_set"),
             "cycle": wikilib.frontmatter_value(fm, "cycle"),
             "next": wikilib.frontmatter_value(fm, "next") or "",
+            "next_set": wikilib.frontmatter_value(fm, "next_set"),
+            "next_checked": wikilib.frontmatter_value(fm, "next_checked"),
             "verify": wikilib.frontmatter_value(fm, "verify") or "",
             "waiting_on": wikilib.frontmatter_value(fm, "waiting_on") or "none",
             "ask": wikilib.frontmatter_value(fm, "ask") or "",
@@ -121,6 +123,19 @@ def stale_rank(item, today):
     return age > STALE_RANK_DAYS
 
 
+def next_age(item, today):
+    """Days since `next` was written or re-verified, when over the configured
+    `next_stale_days` on a page that is not parked or done; else None."""
+    limit = item.get("next_stale_days")
+    if not isinstance(limit, int) or item["status"] in ("parked", "done"):
+        return None
+    dates = [d for d in (_iso(item.get("next_set")), _iso(item.get("next_checked"))) if d]
+    if not dates:
+        return None
+    age = (today - max(dates)).days
+    return age if age > limit else None
+
+
 def sort_key(item):
     return (
         item.get("tier", 0),
@@ -143,6 +158,9 @@ def fmt_row(item, today):
         line += f" [waiting on {item['waiting_on']}: {item['ask']}]"
     if stale_rank(item, today):
         line += f" → stale, set {item['priority_set']}"
+    age = next_age(item, today)
+    if age is not None:
+        line += f" → position {age}d old, re-verify"
     return line
 
 
@@ -246,6 +264,8 @@ def build(kb, repo=None):
 
     schema = cfg.get("initiative_schema") or {}
     items = load_initiatives(kb)
+    for it in items:
+        it["next_stale_days"] = schema.get("next_stale_days")
     shipped, active = [], []
     for it in items:
         if it["status"] == "done":

@@ -58,4 +58,23 @@ fi
 # the check and the commit gate cannot disagree while a vendored copy lags the plugin.
 L="${WIKI_LINT_HOOKS:-$H}"
 [ -f "$L/lint.sh" ] || L="$H"
-WIKI_CHECK_INDEX=1 "$L/lint.sh" "$KB"
+out=$(WIKI_CHECK_INDEX=1 "$L/lint.sh" "$KB"); rc=$?
+[ -n "$out" ] && printf '%s\n' "$out"
+
+# Gate log: one line per run of this hook (time, attempt, outcome, failed checks, HEAD).
+# wiki-commit passes WIKI_GATE_ATTEMPT so its retries count as one attempt. Best-effort.
+{
+  checks=""
+  if [ "$rc" -ne 0 ]; then
+    checks=$(printf '%s\n' "$out" | sed -nE \
+      -e 's/^  BUDGET ([a-z_]*)=.*/\1/p' \
+      -e 's/^  (BROKEN|UNRESOLVED|BADYAML|INIT-FAIL|PORT-DUPKEY|PORT-TAB|PORT-HASH) .*/\1/p' \
+      | tr 'A-Z' 'a-z' | sort -u | paste -sd, -)
+    [ -n "$checks" ] || checks="other"
+  fi
+  glog="$(git rev-parse --git-dir)/wiki-gate.log"
+  printf '%s\t%s\t%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    "${WIKI_GATE_ATTEMPT:-$$-$RANDOM}" "$([ "$rc" -eq 0 ] && echo pass || echo refused)" \
+    "$checks" "$(git rev-parse --short HEAD 2>/dev/null)" >> "$glog"
+} 2>/dev/null || true
+exit "$rc"

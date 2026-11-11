@@ -71,7 +71,7 @@ def create_pointer(root, arguments):
 def main():
     parser = argparse.ArgumentParser(prog="wiki")
     parser.add_argument("--root")
-    parser.add_argument("command", choices=("query", "health", "eval", "lint", "orphans", "okf", "stage", "status", "pointer"))
+    parser.add_argument("command", choices=("query", "health", "eval", "lint", "orphans", "gate-log", "gate-proof", "okf", "stage", "status", "pointer"))
     parser.add_argument("arguments", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     root = root_path(args.root)
@@ -85,6 +85,8 @@ def main():
         return run([PLUGIN / "hooks/lint.sh", root, *args.arguments])
     if args.command == "orphans":
         return run([PLUGIN / "hooks/orphans.py", root, *args.arguments])
+    if args.command in ("gate-log", "gate-proof"):
+        return run([PLUGIN / f"hooks/{args.command}.py", root, *args.arguments])
     if args.command == "okf":
         return run([HERE / "wiki-okf", *args.arguments])
     if args.command == "stage":

@@ -11,6 +11,12 @@ Usage:
     wiki-fm get PAGE [FIELD...]
     wiki-fm set PAGE FIELD=VALUE [FIELD=VALUE...] [--no-board]
     wiki-fm caps                 print the configured enums and word caps
+    wiki-fm backfill-next [--dry-run]
+                                 stamp next_set from git history on pages that lack it
+
+Setting `next` stamps `next_set` with today when the text changed, and `next_checked` when the
+same text is set again (a re-verification). The board flags a position older than
+initiative_schema.next_stale_days.
 
 PAGE is a path, absolute or relative to the wiki root. An empty VALUE (`ask=`) removes the
 field. A VALUE starting with `[` is written as a flow list, verbatim.
@@ -61,6 +67,12 @@ def apply(text, updates, schema, touch):
     lines = m.group(1).split("\n")
     if touch and "timestamp" not in updates and any(l.startswith("timestamp:") for l in lines):
         updates = dict(updates, timestamp=datetime.date.today().isoformat())
+    if updates.get("next") and "next_set" not in updates and "next_checked" not in updates:
+        today = datetime.date.today().isoformat()
+        if wikilib.frontmatter_value(m.group(1), "next") == render(updates["next"], schema):
+            updates = dict(updates, next_checked=today)
+        else:
+            updates = dict(updates, next_set=today, next_checked="")
     for key, value in updates.items():
         idx = next((i for i, l in enumerate(lines) if re.match(re.escape(key) + r":", l)), None)
         if idx is not None and idx + 1 < len(lines) and re.match(r"^\s+-\s", lines[idx + 1]) \
@@ -158,9 +170,38 @@ def cmd_set(kb, path, rel, pairs, board):
     return 0
 
 
+def cmd_backfill(kb, dry):
+    """next_set := date of the last commit that changed the page's `next:` line."""
+    n = 0
+    for rel in wikilib.git_files(kb):
+        path = os.path.join(kb, rel)
+        if not rel.endswith(".md") or not os.path.isfile(path):
+            continue
+        text = open(path, encoding="utf-8").read()
+        m = FM.match(text)
+        if not m or not wikilib.frontmatter_value(m.group(1), "next") \
+                or wikilib.frontmatter_value(m.group(1), "next_set"):
+            continue
+        date = subprocess.run(["git", "log", "-1", "--format=%ad", "--date=short", "-G", "^next:",
+                               "--", rel], cwd=kb, capture_output=True, text=True).stdout.strip()
+        if not date:
+            continue
+        print(f"{rel}: next_set {date}")
+        n += 1
+        if not dry:
+            new, _, _ = apply(text, {"next_set": date}, {}, touch=False)
+            tmp = f"{path}.wiki-fm.{os.getpid()}"
+            with open(tmp, "w", encoding="utf-8") as fh:
+                fh.write(new)
+            os.replace(tmp, path)
+    print(f"{n} page(s) {'would be ' if dry else ''}stamped")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(prog="wiki-fm", add_help=True)
-    ap.add_argument("cmd", choices=["get", "set", "caps"])
+    ap.add_argument("cmd", choices=["get", "set", "caps", "backfill-next"])
+    ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("page", nargs="?")
     ap.add_argument("rest", nargs="*")
     ap.add_argument("--root")
@@ -168,6 +209,9 @@ def main():
     a = ap.parse_args()
     if a.cmd == "caps":
         return cmd_caps(os.path.expanduser(a.root) if a.root else wikilib.resolve_root(None))
+    if a.cmd == "backfill-next":
+        return cmd_backfill(os.path.expanduser(a.root) if a.root else wikilib.resolve_root(None),
+                            a.dry_run)
     if not a.page:
         ap.error("PAGE is required")
     kb, path, rel = locate(a.page, a.root)
