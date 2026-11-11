@@ -115,9 +115,19 @@ def log_guard_config(cfg):
     return out
 
 
+def own_wiki():
+    """The wiki this copy is vendored into, if any: <wiki>/{bin,hooks}/<this file>."""
+    own = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if os.path.isfile(os.path.join(own, "wiki.config.json")) or os.path.isfile(os.path.join(own, "KNOWLEDGE.md")):
+        return own
+    return None
+
+
 def resolve_root(argv_root=None):
     if argv_root:
         return os.path.expanduser(argv_root)
+    if own_wiki():
+        return own_wiki()
     env = os.environ.get("CLAUDE_PLUGIN_OPTION_WIKI_ROOT") or os.environ.get("WIKI_ROOT")
     if env:
         return os.path.expanduser(env)

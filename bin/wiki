@@ -13,6 +13,9 @@ PLUGIN = HERE.parent
 
 
 def root_path(value):
+    own = HERE.parent
+    if not value and ((own / "wiki.config.json").is_file() or (own / "KNOWLEDGE.md").is_file()):
+        return own
     value = value or os.environ.get("CLAUDE_PLUGIN_OPTION_WIKI_ROOT") or os.environ.get("WIKI_ROOT") or "~/wiki"
     return Path(value).expanduser().resolve()
 

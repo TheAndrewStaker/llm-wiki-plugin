@@ -3041,6 +3041,17 @@ python3 "$ROOT/bin/wiki" --root "$OW" orphans >/dev/null 2>&1
 assert "wiki orphans exits 0 with none" "0" "$?"
 rm -rf "$(dirname "$OW")"
 
+echo "--- a vendored tool resolves its own wiki, not an inherited WIKI_ROOT ---"
+VW="$(mktemp -d)/wiki"; mkdir -p "$VW"/{bin,hooks,notes}
+cp "$ROOT/bin/wiki-query" "$VW/bin/"; cp "$H/wikilib.py" "$VW/hooks/"
+printf -- '{}\n' > "$VW/wiki.config.json"
+printf -- '---\ntype: notes\ntitle: Zebrafinch page\n---\nzebrafinch\n' > "$VW/notes/z.md"
+git -C "$VW" init -q && git -C "$VW" add -A >/dev/null 2>&1
+vq=$(WIKI_ROOT="$W" python3 "$VW/bin/wiki-query" zebrafinch 2>&1)
+assert_contains "vendored wiki-query searches its own wiki" "notes/z.md" "$vq"
+assert "vendored wikilib resolves its own wiki" "$VW" "$(cd / && WIKI_ROOT="$W" python3 -c "import sys; sys.path.insert(0, '$VW/hooks'); import wikilib; print(wikilib.resolve_root())")"
+rm -rf "$(dirname "$VW")"
+
 echo
 echo "======================================"
 echo "  PASS=$pass  FAIL=$fail"
