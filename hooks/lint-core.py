@@ -233,8 +233,11 @@ if ignore_candidates:
                           f"can pick it up; absent from every clone and invisible to search)")
             ignored += 1
 
+list_exempt = os.environ.get("WIKI_LINT_LIST_EXEMPT") == "1"
 for f in files:
     if orphan_exempt(f, os.path.basename(f)):
+        if list_exempt and f not in linked:
+            issues.append(f"  EXEMPT-UNLINKED {f}")
         continue
     if f not in linked:
         issues.append(f"  ORPHAN {f}")

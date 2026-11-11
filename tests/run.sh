@@ -3024,6 +3024,23 @@ assert "and its own copy otherwise" "vendored" "$(cd "$PW2/repo" && WIKI_COMMIT=
 rm -rf "$PW2"
 rm -rf "$(dirname "$LW")"
 
+echo "--- wiki orphans lists gated orphans and exempt unlinked pages ---"
+OW="$(mktemp -d)/wiki"; mkdir -p "$OW"/{notes,sources}
+printf -- '---\ntype: index\ntitle: Map\n---\n[linked](notes/linked.md)\n' > "$OW/KNOWLEDGE.md"
+printf -- '---\ntype: notes\ntitle: Linked\n---\nbody\n' > "$OW/notes/linked.md"
+printf -- '---\ntype: notes\ntitle: Alone\n---\nbody\n' > "$OW/notes/alone.md"
+printf -- 'raw\n' > "$OW/sources/raw.md"
+git -C "$OW" init -q && git -C "$OW" add -A >/dev/null 2>&1
+orph=$(python3 "$ROOT/bin/wiki" --root "$OW" orphans --all 2>&1); rc=$?
+assert "wiki orphans exits 1 on a gated orphan" "1" "$rc"
+assert_contains "wiki orphans names the orphan" "notes/alone.md" "$orph"
+assert_contains "wiki orphans lists the exempt unlinked page" "sources/raw.md" "$orph"
+assert "wiki orphans does not list a linked page" "0" "$(printf '%s\n' "$orph" | grep -c 'notes/linked.md')"
+git -C "$OW" rm -qf notes/alone.md >/dev/null 2>&1
+python3 "$ROOT/bin/wiki" --root "$OW" orphans >/dev/null 2>&1
+assert "wiki orphans exits 0 with none" "0" "$?"
+rm -rf "$(dirname "$OW")"
+
 echo
 echo "======================================"
 echo "  PASS=$pass  FAIL=$fail"
