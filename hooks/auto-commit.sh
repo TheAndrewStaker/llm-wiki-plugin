@@ -33,6 +33,20 @@ cd "$KB" 2>/dev/null || exit 0
 git rev-parse --git-dir >/dev/null 2>&1 || exit 0
 H="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# SessionEnd runs under a short harness budget; a start line with no end line is a run that
+# was cut off. Machine-local, newest 500 lines kept.
+se_end() { :; }
+if [ "$event" = "SessionEnd" ]; then
+  se_log="$(git rev-parse --absolute-git-dir 2>/dev/null)/compendium/session-end.log"
+  mkdir -p "$(dirname "$se_log")" 2>/dev/null
+  printf '%s\tstart\t%s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "${transcript##*/}" >> "$se_log" 2>/dev/null
+  se_end() {
+    printf '%s\tend\t%s\trc=%s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "${transcript##*/}" "$1" >> "$se_log" 2>/dev/null
+    tail -n 500 "$se_log" > "$se_log.tmp" 2>/dev/null && mv "$se_log.tmp" "$se_log" 2>/dev/null
+  }
+fi
+trap 'se_end "$?"' EXIT
+
 # Mutation policy is content-coupled and explicit. Missing config preserves local auto-commit,
 # while network writes are opt-in.
 auto_commit=true
@@ -96,7 +110,8 @@ cleanup_lock() {
   rm -f "$lock/pid" 2>/dev/null || true
   rmdir "$lock" 2>/dev/null || true
 }
-trap cleanup_lock EXIT INT TERM
+trap 'rc=$?; cleanup_lock; se_end "$rc"' EXIT
+trap cleanup_lock INT TERM
 
 # Queue expiry: at most once a day, on a Stop, inside the lock; commits on its own.
 if [ "$event" = "Stop" ] && [ -f "$H/queue-expire.py" ]; then
