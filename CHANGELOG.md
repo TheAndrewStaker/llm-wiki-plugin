@@ -17,6 +17,9 @@ This project follows Keep a Changelog and intends to use Semantic Versioning aft
 
 ### Changed
 
+- Log guard: reports through Stop `additionalContext` on a clean exit, so Claude continues and the
+  transcript shows Stop hook feedback instead of a hook error. A commit-gate block (exit 2) still
+  carries the guard's reason on stderr.
 - auto-commit: a page the commit gate names after the hook's own check (the tree moved, or the
   engines differed) is held back and the rest commits; only the session that wrote it is told, and
   a failure naming no page is still reported. Every hold, block and failure is appended to

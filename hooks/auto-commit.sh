@@ -10,7 +10,9 @@
 # Gate failures that name a page are attributed first. The session whose transcript wrote a
 # failing page gets exit 2 once, with the failing lines, so it fixes them in the same turn.
 # Any other session commits everything except the failing pages and exits 0. The log guard
-# (log-guard.py) rides the same exit: one block per stop chain, after the commit.
+# (log-guard.py) reports once per stop chain, after the commit: as Stop additionalContext on a
+# clean exit (Claude continues; the transcript shows feedback, not a hook error), or appended to
+# the stderr of an exit-2 block.
 set -uo pipefail
 
 input=$(cat 2>/dev/null || true)
@@ -73,8 +75,13 @@ if command -v python3 >/dev/null 2>&1 && [ -f "$H/log-guard.py" ]; then
     printf '%s' "$input" | python3 "$H/log-guard.py" "$KB" --clear >/dev/null 2>&1 || true
   fi
 fi
-finish() { # finish <rc>: the guard's block comes after whatever was committed
+finish() { # finish <rc>: the guard's message comes after whatever was committed
   if [ -n "$guard_msg" ]; then
+    if [ "$1" = "0" ]; then
+      printf '%s' "$guard_msg" | python3 -c 'import json,sys
+print(json.dumps({"hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": sys.stdin.read()}}))'
+      exit 0
+    fi
     printf '%s\n' "$guard_msg" >&2
     exit 2
   fi

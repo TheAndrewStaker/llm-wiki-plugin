@@ -2480,7 +2480,7 @@ assert_contains "session start names an aim whose carrier is done" "aim:log-ever
 assert_contains "and an aim whose review is overdue" "aim:voice unreviewed" "$out"
 rm -rf "$(dirname "$AW")"
 
-echo "--- log guard: work with no wiki trace blocks the stop once, after the commit ---"
+echo "--- log guard: work with no wiki trace is reported once as Stop feedback, after the commit ---"
 LG="$(mktemp -d)/wiki"
 mkdir -p "$LG"/{initiatives,journal,hooks}
 cp "$H"/* "$LG/hooks/" 2>/dev/null
@@ -2495,6 +2495,11 @@ git -C "$LG" add -A && git -C "$LG" commit -qm init >/dev/null 2>&1
 REC="python3 $H/session-record.py $LG"
 OUTSIDE="$(mktemp -d)"
 stop() { printf '{"hook_event_name":"Stop","stop_hook_active":%s,"session_id":"%s"}' "$1" "$2" | WIKI_ROOT="$LG" bash "$H/auto-commit.sh" 2>&1; }
+feedback() { printf '%s' "$1" | python3 -c 'import json,sys
+try: d=json.loads(sys.stdin.read())
+except ValueError: print("none"); sys.exit()
+h=d.get("hookSpecificOutput") or {}
+print("yes" if h.get("hookEventName")=="Stop" and h.get("additionalContext") and "decision" not in d else "no")'; }
 printf '{"session_id":"s1","tool_name":"Bash","cwd":"%s","tool_input":{"command":"git commit -m x"}}' "$OUTSIDE" | $REC
 printf '{"session_id":"s1","tool_name":"Bash","cwd":"%s","tool_input":{"command":"git commit -m y"}}' "$LG" | $REC
 printf '{"session_id":"s1","tool_name":"Write","tool_input":{"file_path":"%s/code.py"}}' "$OUTSIDE" | $REC
@@ -2502,7 +2507,8 @@ assert "a commit outside the wiki is the one work event recorded" "1" "$(grep -c
 printf 'edited\n' >> "$LG/initiatives/a.md"
 head0=$(git -C "$LG" rev-parse HEAD)
 out=$(stop false s1); rc=$?
-assert "the stop is blocked" "2" "$rc"
+assert "the stop exits 0, so no hook error is shown" "0" "$rc"
+assert "and stdout is only Stop additionalContext JSON" "yes" "$(feedback "$out")"
 assert_contains "with the work named" "git commit -m x" "$out"
 assert_contains "and the way to log" "wiki-fm set" "$out"
 assert "the wiki change was still committed first" "yes" "$([ "$(git -C "$LG" rev-parse HEAD)" != "$head0" ] && echo yes || echo no)"
@@ -2510,16 +2516,31 @@ out=$(stop true s1); rc=$?
 assert "a continuation is never blocked" "0" "$rc"
 printf '{"session_id":"s1","tool_name":"Bash","cwd":"%s","tool_input":{"command":"wiki-fm set initiatives/a.md next=\\"x\\""},"tool_response":{"stdout":"","stderr":"wiki-fm: refused, initiatives/a.md would fail the commit gate"}}' "$LG" | $REC
 out=$(stop false s1); rc=$?
-assert "a refused log command does not satisfy the guard" "2" "$rc"
+assert "a refused log command does not satisfy the guard" "yes" "$(feedback "$out")"
 printf '{"session_id":"s1","tool_name":"Bash","cwd":"%s","tool_input":{"command":"wiki-fm set initiatives/a.md next=\\"done\\""},"tool_response":{"stdout":"set initiatives/a.md: next (1w)","stderr":""}}' "$LG" | $REC
 out=$(stop false s1); rc=$?
 assert "after a log the stop passes" "0" "$rc"
+assert "silently" "" "$out"
 printf '{"session_id":"s1","agent_id":"sub1","tool_name":"Bash","cwd":"%s","tool_input":{"command":"gh pr create --fill"}}' "$OUTSIDE" | $REC
 out=$(stop false s1); rc=$?
-assert "a subagent's PR on the same session is work" "2" "$rc"
+assert "a subagent's PR on the same session is work" "yes" "$(feedback "$out")"
+TRL="$(dirname "$LG")/l.jsonl"
+python3 - "$TRL" "$LG" <<'PYEOF'
+import json, sys
+tr, lg = sys.argv[1:3]
+open(tr, "w").write(json.dumps({"type": "assistant", "message": {"content": [
+    {"type": "tool_use", "name": "Write", "input": {"file_path": lg + "/initiatives/b.md"}}]}}) + "\n")
+PYEOF
+printf -- '---\ntype: initiative\ntitle: B\ntimestamp: 2026-01-01\nnext: go\n---\n[gone](missing.md)\n' > "$LG/initiatives/b.md"
+out=$(printf '{"hook_event_name":"Stop","stop_hook_active":false,"session_id":"s1","transcript_path":"%s"}' "$TRL" | WIKI_ROOT="$LG" bash "$H/auto-commit.sh" 2>/dev/null)
+err=$(printf '{"hook_event_name":"Stop","stop_hook_active":false,"session_id":"s1","transcript_path":"%s"}' "$TRL" | WIKI_ROOT="$LG" bash "$H/auto-commit.sh" 2>&1 >/dev/null); rc=$?
+assert "a gate failure on the session's own page still blocks" "2" "$rc"
+assert_contains "with the guard's reason on stderr" "work event(s)" "$err"
+assert "and no JSON on stdout" "" "$out"
+rm -f "$LG/initiatives/b.md" "$TRL"
 printf '{"session_id":"s1","tool_name":"Edit","tool_input":{"file_path":"%s/journal/2026-01-01.md"}}' "$LG" | $REC
 out=$(stop false s1); rc=$?
-assert "a journal edit is a log" "0" "$rc"
+assert "a journal edit is a log" "" "$out"
 printf '{"hook_event_name":"SessionEnd","session_id":"s1"}' | WIKI_ROOT="$LG" bash "$H/auto-commit.sh" >/dev/null 2>&1
 assert "SessionEnd clears the record" "no" "$([ -e "$LG/.git/compendium/sessions/s1.tsv" ] && echo yes || echo no)"
 printf '{"auto_commit": true, "log_guard": {"enabled": false}}\n' > "$LG/wiki.config.json"

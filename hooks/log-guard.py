@@ -3,8 +3,8 @@
 
 Reads the session's event record written by session-record.py and prints the block reason
 when at least log_guard.min_work `work` events follow the last `log` event; prints nothing
-otherwise. auto-commit.sh turns a non-empty reason into one exit-2 block (never on a
-continuation, so a stop chain blocks at most once). `--clear` deletes the record
+otherwise. auto-commit.sh delivers a non-empty reason as Stop additionalContext, so Claude
+continues without a hook error (never on a continuation, so a stop chain reports at most once). `--clear` deletes the record
 (SessionEnd). Off unless log_guard.enabled is true. Silent on any error.
 
 Standalone: printf '{"session_id":"..."}' | log-guard.py [WIKI_ROOT] [--clear]
