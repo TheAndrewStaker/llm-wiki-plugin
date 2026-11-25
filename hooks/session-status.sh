@@ -60,6 +60,15 @@ fi
 qerr="$(git -C "$KB" rev-parse --absolute-git-dir 2>/dev/null)/wiki-queue-expire.err"
 [ -s "$qerr" ] && warn="${warn:+$warn | }queue expiry FAILING (see $qerr) -- its archive commit was refused and rolled back"
 [ -f "$KB/.push-failed" ] && warn="${warn:+$warn | }wiki push is FAILING (see $KB/.push-failed) -- commits are local-only"
+# Vendored engine against the plugin: a plugin change this wiki lacks, or a local edit not yet upstream.
+if [ -f "$KB/hooks/VENDOR.manifest" ] && command -v python3 >/dev/null 2>&1; then
+  vsum=$(CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}" \
+    python3 "$(dirname "${BASH_SOURCE[0]}")/vendor-check.py" "$KB" 2>/dev/null)
+  vb=$(printf '%s\n' "$vsum" | grep -c '^  VENDOR-BEHIND')
+  va=$(printf '%s\n' "$vsum" | grep -c '^  VENDOR-AHEAD')
+  [ "$vb" -gt 0 ] && warn="${warn:+$warn | }wiki engine is $vb file(s) behind the plugin -- refresh: $(printf '%s\n' "$vsum" | sed -n 's/^  refresh: //p')"
+  [ "$va" -gt 0 ] && warn="${warn:+$warn | }wiki engine has $va local edit(s) not in the plugin -- upstream them: $(printf '%s\n' "$vsum" | sed -n 's/^  VENDOR-AHEAD \([^ ]*\).*/\1/p' | tr '\n' ' ')"
+fi
 if [ "$(git -C "$KB" config core.hooksPath 2>/dev/null)" != "hooks" ]; then
   warn="${warn:+$warn | }wiki lint gate not installed -- run: git -C $KB config core.hooksPath hooks"
 fi

@@ -6,6 +6,9 @@ This project follows Keep a Changelog and intends to use Semantic Versioning aft
 
 ### Added
 
+- `vendor-check.py` compares each vendored file with the plugin's copy by content when the plugin is
+  reachable (`CLAUDE_PLUGIN_ROOT` or `plugin_root` in `wiki.config.json`): `VENDOR-BEHIND` for a plugin
+  change the wiki lacks, `VENDOR-AHEAD` for a local edit not upstream. Session start warns on either.
 - `stale-source.py --due`: every page whose cited source changed after the page's
   `reviewed:`/`timestamp:`, cursor-free; surfaced at session start, by `wrap`, and in reflect's scope.
 - `vocab-check.py`: `UNKNOWN-TYPE` against an optional `types` list and `UNCHECKABLE-ADDED` for

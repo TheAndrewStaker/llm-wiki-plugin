@@ -1168,6 +1168,23 @@ python3 "$ROOT/bin/wiki-vendor" --install "$VD" >/dev/null
 printf '\n# local edit\n' >> "$VD/hooks/wikilib.py"
 assert "a locally edited vendored file is flagged" "VENDOR=0/1/drift" \
   "$(python3 "$VD/hooks/vendor-check.py" "$VD" | tail -1)"
+# content comparison against a plugin copy: a temp plugin root, so the real repo is untouched
+UP="$(dirname "$VD")/up"; mkdir -p "$UP/.claude-plugin"
+cp -R "$ROOT/hooks" "$ROOT/bin" "$UP/"; cp "$ROOT/.claude-plugin/plugin.json" "$UP/.claude-plugin/"
+python3 "$ROOT/bin/wiki-vendor" --install "$VD" >/dev/null
+assert "in step with the plugin" "VENDOR=0/0/ok" \
+  "$(CLAUDE_PLUGIN_ROOT="$UP" python3 "$VD/hooks/vendor-check.py" "$VD" | tail -1)"
+printf '\n# upstream change\n' >> "$UP/hooks/orphans.py"
+vc=$(CLAUDE_PLUGIN_ROOT="$UP" python3 "$VD/hooks/vendor-check.py" "$VD")
+assert_contains "a plugin change the wiki lacks is named" "VENDOR-BEHIND hooks/orphans.py" "$vc"
+assert "and the state is behind, with no drift" "VENDOR=0/0/behind" "$(printf '%s\n' "$vc" | tail -1)"
+printf '{"plugin_root": "%s"}\n' "$UP" > "$VD/wiki.config.json"
+assert_contains "plugin_root in the config finds it without the hook env" "VENDOR-BEHIND hooks/orphans.py" \
+  "$(python3 "$VD/hooks/vendor-check.py" "$VD")"
+printf '\n# local fix\n' >> "$VD/hooks/graph-check.py"
+assert_contains "a local edit is named as one to upstream" "VENDOR-AHEAD hooks/graph-check.py" \
+  "$(python3 "$VD/hooks/vendor-check.py" "$VD")"
+rm "$VD/wiki.config.json"
 assert "a wiki with no manifest is not an error" "VENDOR=-" \
   "$(rm "$VD/hooks/VENDOR.manifest"; python3 "$VD/hooks/vendor-check.py" "$VD" | tail -1)"
 rm -rf "$(dirname "$VD")"

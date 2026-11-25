@@ -25,6 +25,12 @@ be made here, kept generic, and verified before commit.
    - `claude plugin validate .`
    - `python3 ~/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py .`
 4. Keep each behavioral phase in a focused commit.
+5. Close the loop in the same session. A dogfooding wiki carries a vendored copy of the engine
+   (`hooks/`, `bin/`, listed in its `hooks/VENDOR.manifest`), so a commit here does not reach it on its
+   own. After a change to a vendored file, run `bin/wiki-vendor --manifest` here and commit, then
+   `bin/wiki-vendor --install <wiki root>` and commit the wiki.
+   The reverse holds too: never fix a vendored file inside a wiki; fix it here, then refresh.
+   `vendor-check.py` names both gaps (`VENDOR-BEHIND`, `VENDOR-AHEAD`) in lint and at session start.
 
 ## Conventions
 

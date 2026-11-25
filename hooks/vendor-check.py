@@ -11,12 +11,18 @@ Three failures, each of which has happened:
                    upstreaming, or a partial refresh.
   VENDOR-STALE     the manifest records an older plugin version than the installed plugin.
                    Advisory: a wiki is allowed to lag, but not silently.
+With the plugin reachable (CLAUDE_PLUGIN_ROOT, or `plugin_root` in wiki.config.json), each file
+is also compared by content, since a version string does not move with every commit:
+  VENDOR-BEHIND    the plugin's copy changed (or the plugin vendors a file the wiki lacks) and
+                   the wiki's copy is still the vendored one: refresh with wiki-vendor --install.
+  VENDOR-AHEAD     the wiki's copy was edited and differs from the plugin: upstream the edit to
+                   the plugin, then refresh.
 
 No manifest at all is not an error. A wiki predating vendoring, or one that deliberately
 runs the plugin directly, has nothing to check.
 
 Advisory, always exits 0. Standalone: python3 hooks/vendor-check.py [WIKI_ROOT]
-Ends with: VENDOR=<missing>/<modified>/<stale|ok|->
+Ends with: VENDOR=<missing>/<modified>/<stale|behind|drift|ok|->
 """
 import hashlib
 import json
@@ -71,9 +77,11 @@ for want_hash, rel in entries:
 
 # The plugin is only reachable when installed. A bare clone skips this half.
 stale = False
-plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
+behind = 0
+plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT") or wikilib.load_config(KB).get("plugin_root")
 if plugin_root:
-    pj = os.path.join(os.path.expanduser(plugin_root), ".claude-plugin", "plugin.json")
+    plugin_root = os.path.expanduser(plugin_root)
+    pj = os.path.join(plugin_root, ".claude-plugin", "plugin.json")
     try:
         with open(pj, encoding="utf-8") as fh:
             live = json.load(fh).get("version", "0")
@@ -82,7 +90,34 @@ if plugin_root:
                   f"(refresh: bin/wiki-vendor --install {KB})")
             stale = True
     except (OSError, ValueError):
+        plugin_root = None
+if plugin_root:
+    known = {rel for _, rel in entries}
+    upstream = []
+    try:
+        with open(os.path.join(plugin_root, "hooks", "VENDOR.manifest"), encoding="utf-8") as fh:
+            for line in fh:
+                parts = line.split()
+                if len(parts) == 2 and not line.startswith(("#", "version ")):
+                    upstream.append(parts[1])
+    except OSError:
         pass
+    for rel in upstream:
+        if rel not in known and os.path.isfile(os.path.join(plugin_root, rel)):
+            print(f"  VENDOR-BEHIND {rel} (the plugin vendors it; this wiki has no copy)")
+            behind += 1
+    for want_hash, rel in entries:
+        up = sha(os.path.join(plugin_root, rel))
+        got = sha(os.path.join(KB, rel))
+        if up is None or got is None or up == got:
+            continue
+        if got == want_hash:
+            print(f"  VENDOR-BEHIND {rel} (the plugin's copy changed)")
+            behind += 1
+        else:
+            print(f"  VENDOR-AHEAD {rel} (edited here; upstream it to {plugin_root}, then refresh)")
+    if behind:
+        print(f"  refresh: {plugin_root}/bin/wiki-vendor --install {KB}")
 
-state = "stale" if stale else ("ok" if not (missing or modified) else "drift")
+state = "stale" if stale else ("drift" if (missing or modified) else ("behind" if behind else "ok"))
 print(f"VENDOR={missing}/{modified}/{state}")
