@@ -1,0 +1,158 @@
+#!/usr/bin/env python3
+"""wiki-brief-facts: the recorded facts a briefing starts from, for one initiative. Read-only.
+
+    wiki-brief-facts [--root WIKI] [--repo NAME] [<initiative-slug>]
+
+With no slug, resolves the open initiative whose `repos:` lists the current repository (a linked
+worktree resolves to its main repository; --repo names it instead). Several matches: lists them
+and exits 3. None: exits 2.
+
+Prints the page's position fields, the age of `next` (STALE past `initiative_schema.next_stale_days`),
+journal lines tagged with the slug since the position was written, the page's commits, and each
+listed repository's commits on its default branch. Repositories are found under `repos_root` in
+wiki.config.json; a name that is not checked out is reported, not guessed.
+"""
+import argparse
+import datetime
+import os
+import subprocess
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(HERE), "hooks"))
+import wikilib  # noqa: E402
+import board  # noqa: E402
+
+FIELDS = ["assignment_status", "priority", "next", "verify", "waiting_on", "ask", "deadlines",
+          "prs", "repos"]
+CLOSED = ("parked", "done")
+
+
+def git(*args):
+    r = subprocess.run(["git", *args], capture_output=True, text=True)
+    return r.stdout if r.returncode == 0 else ""
+
+
+def current_repo():
+    common = git("rev-parse", "--path-format=absolute", "--git-common-dir").strip()
+    if not common:
+        return None
+    top = common[:-5] if common.endswith("/.git") else common
+    return os.path.basename(top.rstrip("/"))
+
+
+def iso(value):
+    try:
+        return datetime.date.fromisoformat(str(value).strip().strip("\"'"))
+    except (TypeError, ValueError):
+        return None
+
+
+def main(argv):
+    ap = argparse.ArgumentParser(add_help=True)
+    ap.add_argument("slug", nargs="?")
+    ap.add_argument("--root")
+    ap.add_argument("--repo")
+    a = ap.parse_args(argv)
+    kb = wikilib.resolve_root(a.root)
+    cfg = wikilib.load_config(kb)
+    items = {i["slug"]: i for i in board.load_initiatives(kb)}
+
+    slug = a.slug
+    if not slug:
+        repo = a.repo or current_repo()
+        if not repo:
+            print("brief: not in a repository; give an initiative slug", file=sys.stderr)
+            return 2
+        bound = sorted(s for s, i in items.items() if i["status"] not in CLOSED and repo in i["repos"])
+        if not bound:
+            print(f"brief: no open initiative lists {repo} under repos:", file=sys.stderr)
+            return 2
+        if len(bound) > 1:
+            print(f"Several initiatives are bound to {repo}; ask which one:")
+            for s in bound:
+                print(f"  {s}")
+            return 3
+        slug = bound[0]
+    rel = f"initiatives/{slug}.md"
+    page = os.path.join(kb, rel)
+    if not os.path.isfile(page):
+        print(f"brief: no initiative page {page}", file=sys.stderr)
+        return 2
+    fm = wikilib.fm_block(wikilib.read(kb, rel)) or ""
+
+    print(f"Initiative: {slug}")
+    print(f"Page: {page}")
+    for f in FIELDS:
+        vals = wikilib.fm_list(fm, f) if f in ("repos", "prs", "deadlines") else None
+        v = ", ".join(vals) if vals else (wikilib.frontmatter_value(fm, f) or "").strip().strip("\"'")
+        if v:
+            print(f"{f}: {v}")
+
+    today = datetime.date.today()
+    set_on = iso(wikilib.frontmatter_value(fm, "next_set"))
+    checked = iso(wikilib.frontmatter_value(fm, "next_checked"))
+    since = max([d for d in (set_on, checked) if d], default=None)
+    limit = (cfg.get("initiative_schema") or {}).get("next_stale_days")
+    if since:
+        age = (today - since).days
+        stale = isinstance(limit, int) and age > limit
+        line = f"Position written {set_on or 'undated'}"
+        if checked:
+            line += f", re-verified {checked}"
+        line += f": {age} days old"
+        if stale:
+            line += " (STALE: verify it before relying on it)"
+        print(line)
+    else:
+        since = today - datetime.timedelta(days=14)
+        print("Position has no date; showing the last 14 days")
+
+    print(f"\nJournal lines tagged {slug} since {since}:")
+    jdir = os.path.join(kb, "journal")
+    found = False
+    tag = f"· {slug} ·"
+    for name in sorted(os.listdir(jdir)) if os.path.isdir(jdir) else []:
+        day = iso(name[:-3]) if name.endswith(".md") else None
+        if not day or day < since:
+            continue
+        with open(os.path.join(jdir, name), encoding="utf-8") as fh:
+            for line in fh:
+                if tag in line:
+                    print(f"  {day} {line.rstrip()}")
+                    found = True
+    if not found:
+        print("  none")
+
+    print(f"\nPage commits since {since}:")
+    log = git("-C", kb, "log", f"--since={since} 00:00", "--format=%ad %h %s", "--date=short", "--", rel)
+    lines = log.splitlines()
+    shown = [l for l in lines if "session auto-save" not in l][:10]
+    for l in shown:
+        print(f"  {l}")
+    print(f"  ({len(lines)} in total, auto-saves included)")
+
+    repos_root = cfg.get("repos_root")
+    wiki_name = os.path.basename(os.path.normpath(kb))
+    for name in wikilib.fm_list(fm, "repos"):
+        if name == wiki_name:
+            continue
+        d = os.path.join(os.path.expanduser(repos_root), name) if repos_root else None
+        if not d or not os.path.exists(os.path.join(d, ".git")):
+            where = f"under {repos_root}" if repos_root else "(no repos_root in wiki.config.json)"
+            print(f"\nRepository {name}: not checked out {where}")
+            continue
+        ref = git("-C", d, "symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD").strip()
+        label = ref or "HEAD (no origin/HEAD; local branch, may be behind)"
+        print(f"\nRepository {name}, commits on {label} since {since}:")
+        out = git("-C", d, "log", ref or "HEAD", f"--since={since} 00:00",
+                  "--format=%ad %h %an: %s", "--date=short").splitlines()
+        for l in out[:8]:
+            print(f"  {l}")
+        if not out:
+            print("  none")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

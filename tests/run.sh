@@ -3212,6 +3212,46 @@ assert "a changed next restamps next_set" "$today" "$(python3 "$ROOT/bin/wiki-fm
 assert "and drops next_checked" "" "$(python3 "$ROOT/bin/wiki-fm" get "$GW/initiatives/one.md" next_checked | sed 's/^next_checked: //')"
 rm -rf "$(dirname "$GW")"
 
+echo "--- wiki-brief-facts: bindings, worktrees, staleness ---"
+BF="$(mktemp -d)"; BW="$BF/wiki"; BR="$BF/code"
+mkdir -p "$BW/initiatives" "$BW/journal" "$BR"
+old=$(python3 -c 'import datetime; print(datetime.date.today() - datetime.timedelta(days=30))')
+now=$(date +%Y-%m-%d)
+printf '{"repos_root": "%s", "initiative_schema": {"next_stale_days": 14}}\n' "$BR" > "$BW/wiki.config.json"
+printf -- '---\ntype: initiative\ntitle: Alpha\nassignment_status: active\nnext: "Alpha position."\nnext_set: %s\nrepos:\n  - proj\n  - missing-repo\n---\nbody\n' "$old" > "$BW/initiatives/alpha.md"
+printf -- '---\ntype: initiative\ntitle: Beta\nassignment_status: active\nnext: Beta position.\nnext_set: %s\nnext_checked: %s\nrepos: ["other", "proj2"]\n---\nbody\n' "$old" "$now" > "$BW/initiatives/beta.md"
+printf -- '---\ntype: initiative\ntitle: Gamma\nassignment_status: parked\nnext: Gamma.\nrepos: [proj]\n---\nbody\n' > "$BW/initiatives/gamma.md"
+printf -- '---\ntype: journal\n---\n- 10:00 · alpha · a tagged line\n- 10:01 · beta · not alpha\n' > "$BW/journal/$now.md"
+git -C "$BW" init -q; git -C "$BW" add -A; git -C "$BW" -c user.name=t -c user.email=t@t commit -qm init
+for r in proj proj2; do
+  git init -q "$BR/$r"; git -C "$BR/$r" -c user.name=t -c user.email=t@t commit -q --allow-empty -m "$r work"
+done
+git -C "$BR/proj2" worktree add -q "$BF/proj2-wt" >/dev/null 2>&1
+bf() { (cd "$1" && shift && python3 "$ROOT/bin/wiki-brief-facts" --root "$BW" "$@" 2>&1); }
+out=$(bf "$BR/proj"); rc=$?
+assert "a block-list repos: binds the repository" "0" "$rc"
+assert_contains "the bound initiative is resolved" "Initiative: alpha" "$out"
+assert_contains "a block list prints as a list" "repos: proj, missing-repo" "$out"
+assert_contains "an old position is STALE" "(STALE: verify it" "$out"
+assert_contains "the tagged journal line shows" "a tagged line" "$out"
+assert "an untagged journal line does not" "0" "$(printf '%s' "$out" | grep -c 'not alpha')"
+assert_contains "repository commits come with their ref" "proj work" "$out"
+assert_contains "a repository not checked out is reported" "Repository missing-repo: not checked out" "$out"
+out=$(bf "$BF/proj2-wt"); rc=$?
+assert "a linked worktree resolves to its repository" "0" "$rc"
+assert_contains "a quoted flow list binds" "Initiative: beta" "$out"
+assert "a re-verified position is not stale" "0" "$(printf '%s' "$out" | grep -c STALE)"
+sed -i.bak 's/repos: \[proj\]/repos: [proj]/; s/assignment_status: parked/assignment_status: active/' "$BW/initiatives/gamma.md"
+rm "$BW/initiatives/gamma.md.bak"; git -C "$BW" -c user.name=t -c user.email=t@t commit -qam reopen
+out=$(bf "$BR/proj"); rc=$?
+assert "several bound initiatives exit 3" "3" "$rc"
+assert_contains "and are listed for a choice" "gamma" "$out"
+out=$(bf "$BF"); rc=$?
+assert "outside a repository with no slug exits 2" "2" "$rc"
+assert_contains "wiki-fm get reads a block list" "repos: [proj, missing-repo]" \
+  "$(python3 "$ROOT/bin/wiki-fm" get "$BW/initiatives/alpha.md" repos)"
+rm -rf "$BF"
+
 echo
 echo "======================================"
 echo "  PASS=$pass  FAIL=$fail"

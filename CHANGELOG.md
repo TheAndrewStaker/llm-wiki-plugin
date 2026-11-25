@@ -6,6 +6,10 @@ This project follows Keep a Changelog and intends to use Semantic Versioning aft
 
 ### Added
 
+- `brief` skill and `bin/wiki-brief-facts`: a read-only briefing on one initiative from its recorded
+  position, its age against `next_stale_days`, journal lines and commits since, and each `repos:`
+  repository's commits (found under `repos_root`). With no slug it resolves the initiative bound to the
+  current repository, worktrees included.
 - `scripts/check-no-org.sh` modes for what Git records: `--staged` (index blobs and paths), `--msg`
   (commit message), `--range` (each commit's message, paths and tree), and `--strict`, which fails on a
   missing, empty or invalid denylist. The denylist can live outside the repo (`git config

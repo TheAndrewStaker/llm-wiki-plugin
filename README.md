@@ -84,7 +84,7 @@ Concept pages map directly to OKF v0.2: Markdown + YAML frontmatter with `type:`
 
 Three seams, each matched to its consumer:
 
-- **Per-machine (paths):** the plugin's `userConfig.WIKI_ROOT` (defaults to `~/wiki`); scripts also honor `$WIKI_ROOT` and an explicit argv path.
+- **Per-machine (paths):** the plugin's `userConfig.WIKI_ROOT` (defaults to `~/wiki`); scripts also honor `$WIKI_ROOT` and an explicit argv path. `wiki.config.json` may add `plugin_root` (a plugin checkout, for the two-way vendor check) and `repos_root` (where the repositories named in an initiative's `repos:` are checked out, for `brief`).
 - **Per-user, content-coupled:** `wiki.config.json` at the wiki root (content dirs, orphan exemptions, missed-link stoplist, thresholds, `advisory_budgets` including the per-commit `missed_links_added`, `initiative_schema` with its transition rules `required_at_status` and `active_max`, the `log_guard` block, the `aims` section pointer, and `okf` export identities) — versioned with the content.
 - **Per-org:** drop-in extension dirs (`status.d/*.sh` for session-start context injection); nothing host-specific in core.
 
