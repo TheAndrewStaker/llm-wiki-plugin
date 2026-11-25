@@ -181,11 +181,21 @@ def slug(entry):
 
 
 def plugin_version():
+    """The manifest version, else the plugin checkout's commit (pre-release manifests carry none)."""
+    root = os.path.dirname(HERE)
     try:
-        with open(os.path.join(os.path.dirname(HERE), ".claude-plugin", "plugin.json"), encoding="utf-8") as fh:
-            return json.load(fh).get("version")
+        with open(os.path.join(root, ".claude-plugin", "plugin.json"), encoding="utf-8") as fh:
+            version = json.load(fh).get("version")
     except (OSError, ValueError):
         return None
+    if version:
+        return version
+    try:
+        sha = subprocess.run(["git", "-C", root, "rev-parse", "--short", "HEAD"],
+                             capture_output=True, text=True, timeout=5).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return sha or None
 
 
 def producer(name):

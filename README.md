@@ -1,6 +1,6 @@
 # llm-wiki-plugin
 
-> Working name. The published name will be **compendium**; this repo is private during dogfooding and internal sharing.
+> Working name. The published name will be **compendium**; the project is pre-release and dogfooded.
 
 A compounding, file-based knowledge wiki for AI agents, packaged for Claude Code and Codex from one
 shared skill tree. Markdown + YAML frontmatter, a deterministic lint gate, agentic lexical search, and
@@ -22,6 +22,15 @@ Three things this plugin is built around:
   rather than passing blind; a separate advisory-counter tier covers everything short of that; and
   `tests/run.sh` pins the whole lint/query/stale/health stack against a real fixture wiki on every
   verification run.
+
+Install in Claude Code (2.1.275 or later), then run the `wiki-setup` skill:
+
+```
+/plugin install llm-wiki-plugin --marketplace TheAndrewStaker/llm-wiki-plugin
+```
+
+Until the first release the plugin manifest carries no `version`, so each commit is a new version and
+`claude plugin update` delivers it.
 
 For local Codex development, register this checkout as a marketplace with
 `codex plugin marketplace add /path/to/llm-wiki-plugin`, then install
@@ -99,6 +108,7 @@ The core loop (setup → migrate → ingest/query/reflect/wrap, lint gate, auto-
 ```sh
 bash tests/run.sh           # golden assertions; must end PASS=n FAIL=0
 claude plugin validate .    # manifest check
+bash tests/install-smoke.sh # install as a user would (needs the claude CLI; isolated config dir)
 ```
 
 ## License

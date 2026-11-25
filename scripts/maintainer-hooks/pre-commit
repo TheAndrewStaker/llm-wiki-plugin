@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Maintainer hook (opt in: git config core.hooksPath scripts/maintainer-hooks). Needs the private denylist.
+exec bash "$(git rev-parse --show-toplevel)/scripts/check-no-org.sh" --strict --staged

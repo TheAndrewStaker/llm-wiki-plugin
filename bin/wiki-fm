@@ -110,7 +110,11 @@ def cmd_get(path, fields):
     keys = fields or [l.split(":", 1)[0] for l in fm.split("\n") if re.match(r"^[A-Za-z_]\w*:", l)]
     for k in keys:
         v = wikilib.frontmatter_value(fm, k)
-        wc = f"  ({len(v.split())}w)" if v and k in ("summary", "next", "ask") else ""
+        if not v:
+            items = wikilib.fm_list(fm, k)
+            if items:
+                v = "[" + ", ".join(items) + "]"
+        wc =f"  ({len(v.split())}w)" if v and k in ("summary", "next", "ask") else ""
         print(f"{k}: {v if v is not None else ''}{wc}")
     return 0
 

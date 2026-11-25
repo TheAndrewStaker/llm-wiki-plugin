@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Maintainer hook: the commit message is published with the history.
+exec bash "$(git rev-parse --show-toplevel)/scripts/check-no-org.sh" --strict --msg "$1"

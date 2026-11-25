@@ -1,7 +1,6 @@
 {
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "llm-wiki-plugin",
-  "version": "0.1.0",
   "description": "A compounding, file-based knowledge wiki for AI agents: markdown + YAML frontmatter, deterministic lint, agentic search, and ingest/query/reflect skills. Follows Karpathy's LLM-Wiki pattern and Google's Open Knowledge Format.",
   "author": {
     "name": "Andrew Staker"

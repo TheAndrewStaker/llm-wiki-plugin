@@ -4,13 +4,17 @@
 - [ ] Replace development-local marketplace source metadata with the chosen public distribution layout.
 - [ ] Run the full golden suite and both Claude/Codex manifest validators in clean environments.
 - [ ] Install from a clean clone in Claude Code and Codex; exercise setup, ingest, query, wrap, and uninstall.
-- [ ] Verify all nine skills appear in both harness catalogs and their starter prompts name the right skill.
+- [ ] Verify every skill under `skills/` appears in both harness catalogs and their starter prompts name the right skill.
 - [ ] Run secret, organization-residue, dependency, and license scans over the complete git history.
 - [ ] Review Apache-2.0, NOTICE, CONTRIBUTING, SECURITY, and private vulnerability reporting.
 - [ ] Populate real synthetic retrieval eval cases and choose a documented Recall@k release threshold.
 - [ ] Run `evals/reflect-contradiction.example.md` against the current reflect prompt and record the classification it produced.
 - [ ] Export a sample wiki and validate it against both `wiki-okf` and Google's current OKF reference tooling.
 - [ ] Test upgrades from the preceding release without overwriting wiki-owned files or configuration.
+- [ ] Run `bash tests/install-smoke.sh` on the release tree.
+- [ ] Set `version` in `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json` together (the
+      marketplace entry carries none). From then on every shipped change bumps it, because a hosted
+      install with an unchanged version reports "already at the latest version" and never updates.
 - [ ] Pin release notes to a commit, create the signed tag, then publish marketplaces only after smoke tests pass.
 
 Publishing is an external state change and is never part of an automated release check.

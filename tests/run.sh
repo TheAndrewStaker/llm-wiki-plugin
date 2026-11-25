@@ -684,10 +684,16 @@ echo "--- template scaffold lints clean + pre-commit gate blocks ---"
 # wiki-setup's deterministic core: templates/tree + the wiki's own hook copies must yield a
 # lint-green wiki whose pre-commit rejects a broken link and passes a clean commit.
 T="$(mktemp -d)/fresh"
-mkdir -p "$T"
-cp -R "$ROOT/templates/tree/." "$T/"
-mv "$T/gitignore" "$T/.gitignore"
-python3 "$ROOT/bin/wiki-vendor" --install "$T" >/dev/null
+out=$(python3 "$ROOT/bin/wiki-scaffold" "$T"); rc=$?
+assert "wiki-scaffold succeeds" "0" "$rc"
+assert_contains "wiki-scaffold renames the gitignore" "created .gitignore" "$out"
+assert "wiki-scaffold stamps KNOWLEDGE.md to today" "1" \
+  "$(grep -c "^timestamp: $(date +%Y-%m-%d)" "$T/KNOWLEDGE.md")"
+echo "kept" > "$T/notes/mine.md"; cp "$T/KNOWLEDGE.md" "$T/K.before"; echo extra >> "$T/KNOWLEDGE.md"
+out=$(python3 "$ROOT/bin/wiki-scaffold" "$T")
+assert_contains "a re-run creates nothing" "SCAFFOLD created=0" "$out"
+assert "a re-run keeps an edited file" "extra" "$(tail -1 "$T/KNOWLEDGE.md")"
+mv "$T/K.before" "$T/KNOWLEDGE.md"; rm "$T/notes/mine.md"
 git -C "$T" init -q
 git -C "$T" config core.hooksPath hooks
 git -C "$T" add -A
@@ -704,6 +710,63 @@ rm -rf "$(dirname "$T")"
 echo "--- org-residue scan (scanner ships; terms live in a gitignored denylist) ---"
 bash "$ROOT/scripts/check-no-org.sh" >/dev/null 2>&1; rc=$?
 assert "org-residue scan passes on tracked repo" "0" "$rc"
+
+echo "--- release metadata: one version source ---"
+vers=$(python3 - "$ROOT" <<'EOF'
+import json, os, sys
+r = sys.argv[1]
+c = json.load(open(os.path.join(r, ".claude-plugin", "plugin.json")))
+m = json.load(open(os.path.join(r, ".claude-plugin", "marketplace.json")))
+x = json.load(open(os.path.join(r, ".codex-plugin", "plugin.json")))
+mk = any("version" in p for p in m.get("plugins", []))
+same = "version" not in c or c["version"] == x.get("version")
+print(f"{'dup' if mk else 'single'} {'agree' if same else 'differ'}")
+EOF
+)
+assert "the marketplace entry carries no version (plugin.json is the source)" "single agree" "$vers"
+assert "every hook command quotes the plugin root" "0" \
+  "$(grep -c '"command": "\${CLAUDE_PLUGIN_ROOT}' "$ROOT/hooks/hooks.json")"
+
+echo "--- org-residue scan: strict maintainer modes (synthetic term) ---"
+OS="$(mktemp -d)"; OR="$OS/repo"; mkdir -p "$OR/scripts"
+cp "$ROOT/scripts/check-no-org.sh" "$OR/scripts/"
+cp -R "$ROOT/scripts/maintainer-hooks" "$OR/scripts/"
+printf '# synthetic\nzorblaxcorp\n' > "$OS/deny"
+git -C "$OR" init -q; git -C "$OR" config user.name t; git -C "$OR" config user.email t@t
+git -C "$OR" config llmwiki.orgDenylist "$OS/deny"
+echo clean > "$OR/a.txt"; git -C "$OR" add -A; git -C "$OR" commit -qm base
+scan() { bash "$OR/scripts/check-no-org.sh" "$@" >/dev/null 2>&1; echo $?; }
+echo "ZorblaxCorp" > "$OR/a.txt"; git -C "$OR" add a.txt; echo clean > "$OR/a.txt"
+assert "clean worktree passes the tree scan" "0" "$(scan)"
+assert "a dirty index fails the staged scan" "1" "$(scan --strict --staged)"
+git -C "$OR" reset -q
+printf 'mention zorblaxcorp\n# zorblaxcorp in a comment line\n' > "$OS/msg"
+assert "a forbidden commit message fails" "1" "$(scan --strict --msg "$OS/msg")"
+printf 'clean subject\n# zorblaxcorp only in a comment\n' > "$OS/msg"
+assert "message comment lines are ignored" "0" "$(scan --strict --msg "$OS/msg")"
+echo zorblaxcorp > "$OR/b.txt"; git -C "$OR" add -A; git -C "$OR" commit -qm add --no-verify
+git -C "$OR" rm -q b.txt; git -C "$OR" commit -qm remove --no-verify
+assert "an older offending commit fails the range scan" "1" "$(scan --strict --range HEAD~2..HEAD)"
+assert "the clean tip alone passes" "0" "$(scan --strict --range HEAD~1..HEAD)"
+assert "range output never prints the term" "0" \
+  "$(bash "$OR/scripts/check-no-org.sh" --strict --range HEAD~2..HEAD | grep -ci zorblax)"
+git -C "$OR" config --unset llmwiki.orgDenylist
+assert "strict mode fails without a denylist" "2" "$(scan --strict --staged)"
+assert "non-strict mode skips without a denylist" "0" "$(scan --staged)"
+printf 'bad[\n' > "$OS/deny2"
+assert "strict mode fails on an invalid pattern" "2" "$(LLM_WIKI_ORG_DENYLIST="$OS/deny2" scan --strict)"
+git -C "$OR" config llmwiki.orgDenylist "$OS/deny"
+git -C "$OR" config core.hooksPath scripts/maintainer-hooks
+echo zorblaxcorp > "$OR/c.txt"; git -C "$OR" add c.txt
+git -C "$OR" commit -qm hook-blocked >/dev/null 2>&1; rc=$?
+assert "the pre-commit hook blocks a forbidden staged file" "1" "$rc"
+git -C "$OR" rm -q --cached c.txt; rm "$OR/c.txt"
+git -C "$OR" commit -q --allow-empty -m "zorblaxcorp subject" >/dev/null 2>&1; rc=$?
+assert "the commit-msg hook blocks a forbidden message" "1" "$rc"
+git init -q --bare "$OS/remote.git"; git -C "$OR" remote add origin "$OS/remote.git"
+git -C "$OR" push -q origin HEAD:refs/heads/main >/dev/null 2>&1; rc=$?
+assert "the pre-push hook blocks history holding an old offending commit" "1" "$rc"
+rm -rf "$OS"
 
 echo "--- meeting media transcription wrapper ---"
 MEDIA_TMP="$(mktemp -d)"
@@ -830,7 +893,8 @@ assert_contains "the supersede marker maps to deprecated" "status: deprecated" "
 assert_contains "stale_after gains an offset" "stale_after: 2026-12-31T12:00:00+00:00" "$trust"
 printf '{"okf": {"generated_by": "wiki-export"}}\n' > "$OKF_WIKI/wiki.config.json"
 python3 "$ROOT/bin/wiki-okf" export "$OKF_WIKI" "$OKF_OUT" --force >/dev/null
-plugin_ver=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$ROOT/.claude-plugin/plugin.json")
+plugin_ver=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("version", ""))' "$ROOT/.claude-plugin/plugin.json")
+[ -n "$plugin_ver" ] || plugin_ver=$(git -C "$ROOT" rev-parse --short HEAD)
 assert_contains "a bare producer gains the plugin version" "by: wiki-export/$plugin_ver" "$(cat "$OKF_OUT/concepts/trust.md")"
 printf '{"okf": {"generated_by": "wiki-export/0.1.0", "verifier": "human:owner"}}\n' > "$OKF_WIKI/wiki.config.json"
 assert "a page without a producer config gets no generated block" "0" "$(grep -c '^generated:' "$OKF_OUT/concepts/exported.md")"

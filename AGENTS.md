@@ -32,6 +32,18 @@ be made here, kept generic, and verified before commit.
    The reverse holds too: never fix a vendored file inside a wiki; fix it here, then refresh.
    `vendor-check.py` names both gaps (`VENDOR-BEHIND`, `VENDOR-AHEAD`) in lint and at session start.
 
+6. Maintainer gate for the no-org rule: `git config llmwiki.orgDenylist <private list>` and
+   `git config core.hooksPath scripts/maintainer-hooks`. The hooks run `scripts/check-no-org.sh --strict`
+   on the staged blobs, the commit message, and every commit about to be pushed; strict mode fails when
+   the list is missing. The list never enters this repository.
+7. Before pushing a change to install or hook wiring, run `bash tests/install-smoke.sh`.
+
+## Versioning
+
+Until the first public release, `.claude-plugin/plugin.json` carries no `version`: Claude Code then
+treats each commit as a version, so every push reaches installed users. The marketplace entry never
+carries one. The release checklist sets it; after that, bump it with every shipped change.
+
 ## Conventions
 
 - Commit identity: `Andrew Staker <stephenstaker@gmail.com>`. Do not add AI attribution trailers.

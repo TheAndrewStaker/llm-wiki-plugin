@@ -6,6 +6,16 @@ This project follows Keep a Changelog and intends to use Semantic Versioning aft
 
 ### Added
 
+- `scripts/check-no-org.sh` modes for what Git records: `--staged` (index blobs and paths), `--msg`
+  (commit message), `--range` (each commit's message, paths and tree), and `--strict`, which fails on a
+  missing, empty or invalid denylist. The denylist can live outside the repo (`git config
+  llmwiki.orgDenylist`). Opt-in maintainer hooks in `scripts/maintainer-hooks/` run it at commit,
+  commit-msg and push.
+- `bin/wiki-scaffold`: the deterministic part of `wiki-setup` (create-only template copy, `.gitignore`
+  rename, timestamp stamp, engine install), shared by the skill and the tests.
+- `tests/install-smoke.sh`: installs from a local and a git-hosted marketplace into an isolated config
+  dir, runs the installed hooks from a path with a space, and proves a new commit reaches the user.
+
 - `vendor-check.py` compares each vendored file with the plugin's copy by content when the plugin is
   reachable (`CLAUDE_PLUGIN_ROOT` or `plugin_root` in `wiki.config.json`): `VENDOR-BEHIND` for a plugin
   change the wiki lacks, `VENDOR-AHEAD` for a local edit not upstream. Session start warns on either.
@@ -20,6 +30,12 @@ This project follows Keep a Changelog and intends to use Semantic Versioning aft
 
 ### Changed
 
+- `wiki-fm get` prints a block-list value (`repos:` written one item per line) as `[a, b]`; it printed
+  nothing, so callers saw no binding.
+- Hook commands quote `${CLAUDE_PLUGIN_ROOT}`; an install path with a space no longer breaks them.
+- The Claude manifest drops `version` until the first release (each commit is a version), and the
+  marketplace entry drops its duplicate. A fixed version that was never bumped meant hosted installs
+  never received an update.
 - Log guard: reports through Stop `additionalContext` on a clean exit, so Claude continues and the
   transcript shows Stop hook feedback instead of a hook error. A commit-gate block (exit 2) still
   carries the guard's reason on stderr.

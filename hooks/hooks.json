@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/session-status.sh"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/session-status.sh\""
           }
         ]
       }
@@ -15,7 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/auto-commit.sh"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/auto-commit.sh\""
           }
         ]
       }
@@ -25,7 +25,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/auto-commit.sh",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/auto-commit.sh\"",
             "timeout": 30
           }
         ]
@@ -37,7 +37,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/initiative-caps.py"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/initiative-caps.py\""
           }
         ]
       },
@@ -46,7 +46,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/session-record.py"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/session-record.py\""
           }
         ]
       }

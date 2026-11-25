@@ -1,0 +1,54 @@
+#!/usr/bin/env python3
+"""wiki-scaffold: the deterministic part of wiki-setup (Steps 3 and 4).
+
+    wiki-scaffold <wiki-root>
+
+Create-only: copies templates/tree into the wiki root, never overwriting a file that exists,
+renames the template `gitignore` to `.gitignore`, stamps `timestamp:` to today on the pages it
+created, then runs `wiki-vendor --install`. Git, the CLAUDE.md stanza and Obsidian stay
+consent steps in the skill. Prints one line per created file and a final `SCAFFOLD created=<n>`.
+"""
+import datetime
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+TREE = os.path.join(ROOT, "templates", "tree")
+STAMPED = {"KNOWLEDGE.md", "STATE.md", "ROADMAP.md"}
+
+
+def main(argv):
+    if len(argv) != 2 or argv[1].startswith("-"):
+        print(__doc__.strip().splitlines()[2].strip(), file=sys.stderr)
+        return 2
+    wiki = os.path.abspath(os.path.expanduser(argv[1]))
+    os.makedirs(wiki, exist_ok=True)
+    today = datetime.date.today().isoformat()
+    created = 0
+    for dirpath, _dirs, files in os.walk(TREE):
+        rel_dir = os.path.relpath(dirpath, TREE)
+        os.makedirs(os.path.join(wiki, rel_dir), exist_ok=True)
+        for name in sorted(files):
+            out_name = ".gitignore" if rel_dir == "." and name == "gitignore" else name
+            dst = os.path.normpath(os.path.join(wiki, rel_dir, out_name))
+            if os.path.lexists(dst):
+                continue
+            shutil.copyfile(os.path.join(dirpath, name), dst)
+            if rel_dir == "." and name in STAMPED:
+                with open(dst, encoding="utf-8") as fh:
+                    text = fh.read()
+                text = re.sub(r"^timestamp: .*$", f"timestamp: {today}", text, count=1, flags=re.M)
+                with open(dst, "w", encoding="utf-8") as fh:
+                    fh.write(text)
+            print(f"created {os.path.relpath(dst, wiki)}")
+            created += 1
+    rc = subprocess.call([sys.executable, os.path.join(ROOT, "bin", "wiki-vendor"), "--install", wiki])
+    print(f"SCAFFOLD created={created}")
+    return rc
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

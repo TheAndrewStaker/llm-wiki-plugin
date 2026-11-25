@@ -27,9 +27,10 @@ default** — this skill must be safe to run against a directory that already ho
 - **Already a wiki** (has `KNOWLEDGE.md`) → this is a re-run: only fill gaps, idempotently.
 
 ## Step 3 — Scaffold the tree (create-only)
-Copy `${CLAUDE_PLUGIN_ROOT}/templates/tree/.` into the wiki root, **skipping any file that already exists**.
-Rename the template `gitignore` → `.gitignore`. Stamp `timestamp:` in `KNOWLEDGE.md`/`STATE.md`/`ROADMAP.md`
-to today (so a fresh wiki isn't born stale). Fill the KNOWLEDGE.md "Local configuration" section by asking
+Run `python3 "${CLAUDE_PLUGIN_ROOT}/bin/wiki-scaffold" <wiki>`. It copies `templates/tree/` into the wiki
+root, **skipping any file that already exists**, renames the template `gitignore` to `.gitignore`, stamps
+`timestamp:` in the `KNOWLEDGE.md`/`STATE.md`/`ROADMAP.md` it created to today (so a fresh wiki isn't born
+stale), and performs Step 4. Show the user its `created` lines. Then fill the KNOWLEDGE.md "Local configuration" section by asking
 the user the few questions there (name/voice, **knowledge routing/topology**, source inbox, corroboration
 sources, review gates). Topology matters most: default to `hub-and-spokes` for anyone working in shared
 code repos (team-audience knowledge goes to the team's own repos as reviewed docs; this wiki keeps the
@@ -40,7 +41,7 @@ Set `auto_commit: false` for a `shared-wiki` unless its maintainers explicitly a
 commits. Keep `auto_push: false` unless the user explicitly opts into network writes.
 
 ## Step 4 — Install the wiki's own lint + search scripts
-Run `python3 "${CLAUDE_PLUGIN_ROOT}/bin/wiki-vendor" --install <wiki>`. It copies the deterministic
+`wiki-scaffold` already ran `python3 "${CLAUDE_PLUGIN_ROOT}/bin/wiki-vendor" --install <wiki>`. It copies the deterministic
 engine into `<wiki>/hooks/` and the CLIs into `<wiki>/bin/`, and writes `hooks/VENDOR.manifest`
 recording the plugin version and a hash per file. This makes the wiki self-contained: a bare clone
 lints AND searches with no plugin installed.
